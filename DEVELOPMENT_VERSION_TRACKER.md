@@ -4,9 +4,50 @@ This document tracks the development progress, versions, and notable changes for
 
 ---
 
-## Version 0.3.0 - Admin User Management (YYYY-MM-DD)
+## Version 0.4.0 - Role-Based Access Control (RBAC) - Basic (2025-05-30)
 
-**Date:** 2025-05-30 (Please update with the actual date)
+**Date:** 2025-05-30
+
+**Features Implemented:**
+
+* **Database Schema Update:**
+    * Added `user_role` column (VARCHAR(50), default 'user') to the `users` table.
+    * Updated existing admin user (`user_id = 1`) to have the 'admin' role.
+* **`UserModel` Enhancements for Roles:**
+    * SELECT queries (`findUserByUsernameOrEmail`, `findUserById`, `getAllUsers`) now fetch the `user_role`.
+    * `createUser()`: Accepts a `user_role` parameter (defaults to 'user') and stores it.
+    * `updateUser()`: Allows updating the `user_role`.
+* **`AuthController` Update:**
+    * `createUserSession()`: Stores the `user_role` in `$_SESSION['user_role']` upon successful login.
+* **`AdminController` Updates for Role-Based Access:**
+    * Constructor access control now checks `$_SESSION['user_role'] === 'admin'` instead of `user_id == 1`.
+    * `addUser()`: Allows setting `user_role` via form, validates against allowed roles.
+    * `editUser()`: Allows editing `user_role` via form, validates, and prevents changing the role of `user_id = 1` from 'admin'.
+    * `deleteUser()`: Protects the primary super admin (`user_id = 1` with 'admin' role) from deletion.
+* **Admin View Updates for Roles:**
+    * `app/views/admin/users.php`: Displays the `user_role` in the user list table. Delete button logic updated to protect primary admin based on role and ID.
+    * `app/views/admin/user_form.php`: Includes a dropdown menu to select/display `user_role` (admin, editor, user). Safeguards prevent changing the primary admin's role from 'admin'.
+* **Layout (`header.php`) Update:**
+    * "Admin Panel" navigation link is now displayed based on `$_SESSION['user_role'] === 'admin'`.
+    * Added Font Awesome CDN link.
+    * User display name and logout link converted to a Bootstrap dropdown.
+
+**Key Changes & Fixes:**
+
+* Shifted from `user_id`-based admin access to a basic role-based system ('admin', 'editor', 'user').
+* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php`.
+
+**To-Do / Next Steps (Examples for RBAC):**
+
+* Implement more granular permissions beyond just 'admin' access (e.g., what 'editor' can do).
+* Create middleware or helper functions for checking permissions for specific actions/controllers.
+* Potentially create a separate table for roles and permissions for a more scalable RBAC system.
+
+---
+
+## Version 0.3.0 - Admin User Management (2025-05-30)
+
+**Date:** 2025-05-30
 
 **Features Implemented:**
 
@@ -37,13 +78,12 @@ This document tracks the development progress, versions, and notable changes for
 * Implement more robust CSRF protection for delete/update actions.
 * Add pagination to the user list for larger numbers of users.
 * Implement search and filtering for the user list.
-* Enhance role management beyond the simple `user_id == 1` check.
 
 ---
 
-## Version 0.2.0 - Administrator Module (YYYY-MM-DD)
+## Version 0.2.0 - Administrator Module (2025-05-30)
 
-**Date:** 2025-05-30 (Please update with the actual date)
+**Date:** 2025-05-30
 
 **Features Implemented:**
 
@@ -76,9 +116,9 @@ This document tracks the development progress, versions, and notable changes for
 
 ---
 
-## Version 0.1.0 - Initial Setup & Login System (YYYY-MM-DD)
+## Version 0.1.0 - Initial Setup & Login System (2025-05-30)
 
-**Date:** 2025-05-30 (Please update with the actual date you started/completed these)
+**Date:** 2025-05-30
 
 **Features Implemented:**
 
