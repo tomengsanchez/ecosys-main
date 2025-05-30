@@ -10,7 +10,8 @@ class AdminController {
     private $userModel; 
     private $departmentModel; 
     private $optionModel; 
-    private $rolePermissionModel; // ADDED: RolePermissionModel instance
+    private $rolePermissionModel; 
+    private $roleModel; // ADDED: RoleModel instance
 
     /**
      * Constructor
@@ -20,7 +21,8 @@ class AdminController {
         $this->userModel = new UserModel($this->pdo); 
         $this->departmentModel = new DepartmentModel($this->pdo); 
         $this->optionModel = new OptionModel($this->pdo); 
-        $this->rolePermissionModel = new RolePermissionModel($this->pdo); // ADDED: Instantiate RolePermissionModel
+        $this->rolePermissionModel = new RolePermissionModel($this->pdo); 
+        $this->roleModel = new RoleModel($this->pdo); // ADDED: Instantiate RoleModel
 
 
         if (!isLoggedIn()) {
@@ -43,11 +45,12 @@ class AdminController {
                 ['label' => 'Admin Panel']
             ]
         ];
-        $this->view('admin/index', $data);
+        $this->view('admin/index', $data); // View needs link to "Manage Roles"
     }
 
     // --- User Management Methods ---
-    // ... (users, addUser, editUser, deleteUser methods remain the same as previous version with capability checks) ...
+    // ... (users, addUser, editUser, deleteUser methods remain largely the same,
+    //      but will use getDefinedRoles() which now fetches from DB) ...
     public function users() {
         if (!userHasCapability('MANAGE_USERS')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage users.';
@@ -74,7 +77,7 @@ class AdminController {
         $commonData = [
             'pageTitle' => 'Add New User',
             'departments' => $departments,
-            'definedRoles' => getDefinedRoles(), // Pass defined roles for the form
+            'definedRoles' => getDefinedRoles(), // This now fetches from DB via RoleModel
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users', 'url' => 'admin/users'],
@@ -174,8 +177,8 @@ class AdminController {
         $commonData = [
             'pageTitle' => 'Edit User',
             'departments' => $departments,
-            'user' => $user, // Original user data
-            'definedRoles' => getDefinedRoles(), // Pass defined roles for the form
+            'user' => $user, 
+            'definedRoles' => getDefinedRoles(), 
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users', 'url' => 'admin/users'],
@@ -185,7 +188,7 @@ class AdminController {
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $formData = [ // Data from the form submission
+            $formData = [ 
                 'user_id' => $userId,
                 'user_login' => trim($_POST['user_login'] ?? ''),
                 'user_email' => trim($_POST['user_email'] ?? ''),
@@ -197,9 +200,7 @@ class AdminController {
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : (int)$user['user_status'],
                 'errors' => []
             ];
-            // Merge common data (like breadcrumbs, departments list) with form data for re-display
             $data = array_merge($commonData, $formData);
-             // Crucially, update the 'user' key in $data to reflect the submitted values for form pre-filling on error
             $data['user'] = array_merge($user, $formData);
 
 
@@ -214,10 +215,9 @@ class AdminController {
             
             $allowedRoles = array_keys(getDefinedRoles()); 
             if (!in_array($data['user_role'], $allowedRoles)) $data['errors']['user_role_err'] = 'Invalid user role selected.';
-            // Prevent changing role of user_id 1 if they are 'admin'
             if ($userId == 1 && $user['user_role'] === 'admin' && $data['user_role'] !== 'admin') {
                  $data['errors']['user_role_err'] = 'The primary super administrator role (ID 1) cannot be changed from "admin".';
-                 $data['user_role'] = 'admin'; // Force it back in the data for re-display
+                 $data['user_role'] = 'admin'; 
             }
             if ($data['department_id'] !== null && !$this->departmentModel->getDepartmentById($data['department_id'])) {
                 $data['errors']['department_id_err'] = 'Invalid department selected.';
@@ -256,7 +256,6 @@ class AdminController {
                 $this->view('admin/user_form', $data);
             }
         } else {
-            // For GET request, merge original user data into commonData for form pre-filling
              $data = array_merge($commonData, [
                 'user_id' => $user['user_id'], 
                 'user_login' => $user['user_login'],
@@ -451,7 +450,6 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
             redirect('admin');
         }
-        // ... (rest of siteSettings logic remains the same) ...
         $manageableOptions = [
             'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
             'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
@@ -502,35 +500,25 @@ class AdminController {
         $this->view('admin/site_settings', $data); 
     }
 
-    // --- Role Access Settings Method (MODIFIED) ---
+    // --- Role Access Settings Method ---
     public function roleAccessSettings() {
         if (!userHasCapability('MANAGE_ROLES_PERMISSIONS')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage role permissions.';
             redirect('admin');
         }
 
-        $definedRoles = getDefinedRoles(); // Get roles like ['admin' => 'Administrator', ...]
-        $allCapabilities = CAPABILITIES; // Get all capabilities like ['MANAGE_USERS' => 'Manage Users', ...]
+        $definedRoles = getDefinedRoles(); 
+        $allCapabilities = CAPABILITIES; 
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            // CSRF token check would be good here
-            
             $submittedPermissions = $_POST['permissions'] ?? [];
             $success = true;
 
             foreach (array_keys($definedRoles) as $roleName) {
-                // Cannot edit permissions for the primary 'admin' role via this UI for safety
-                if ($roleName === 'admin' && $_SESSION['user_role'] === 'admin' && ($_SESSION['user_id'] == 1 || $this->userModel->findUserById($_SESSION['user_id'])['user_role'] === 'admin')) {
-                    // If current user is the primary admin, ensure the 'admin' role retains all capabilities.
-                    // Or, simply skip updating the 'admin' role here and manage it separately/hardcode its full access.
-                    // For now, we'll re-assign all capabilities to 'admin' to ensure it's not accidentally crippled.
-                    // A better approach might be to disallow editing 'admin' role's permissions here.
-                    // $this->rolePermissionModel->setRoleCapabilities($roleName, array_keys($allCapabilities));
-                    // continue; // Skip admin role modification from UI for now for safety
+                if ($roleName === 'admin') { // Skip 'admin' role modifications from UI
+                    continue; 
                 }
-
                 $roleCapabilities = $submittedPermissions[$roleName] ?? [];
-                // Sanitize: ensure only defined capabilities are processed
                 $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities));
                 
                 if (!$this->rolePermissionModel->setRoleCapabilities($roleName, $validRoleCapabilities)) {
@@ -540,13 +528,14 @@ class AdminController {
                 }
             }
 
-            if ($success) {
+            if ($success && !isset($_SESSION['admin_message'])) {
                 $_SESSION['admin_message'] = 'Role permissions updated successfully!';
+            } elseif (!$success && !isset($_SESSION['admin_message'])) {
+                 $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';
             }
-            redirect('admin/roleAccessSettings'); // Redirect to show updated state and message
+            redirect('admin/roleAccessSettings'); 
         }
 
-        // GET request: Fetch current permissions for each role
         $currentRoleCapabilities = [];
         foreach (array_keys($definedRoles) as $roleName) {
             $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName);
@@ -556,13 +545,189 @@ class AdminController {
             'pageTitle' => 'Role Access Settings',
             'definedRoles' => $definedRoles, 
             'allCapabilities' => $allCapabilities, 
-            'currentRoleCapabilities' => $currentRoleCapabilities, // Pass current DB state to view
+            'currentRoleCapabilities' => $currentRoleCapabilities, 
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Role Access Settings']
             ]
         ];
         $this->view('admin/role_access_settings', $data); 
+    }
+
+    // --- Role Management Methods (NEW) ---
+
+    /**
+     * List all roles.
+     */
+    public function listRoles() {
+        if (!userHasCapability('MANAGE_ROLES')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to manage roles.';
+            redirect('admin');
+        }
+        $roles = $this->roleModel->getAllRoles();
+        $data = [
+            'pageTitle' => 'Manage Roles',
+            'roles' => $roles,
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Roles']
+            ]
+        ];
+        $this->view('admin/roles_list', $data); // New view: admin/roles_list.php
+    }
+
+    /**
+     * Display form to add a new role OR process adding a new role.
+     */
+    public function addRole() {
+        if (!userHasCapability('MANAGE_ROLES')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to add roles.';
+            redirect('admin/listRoles');
+        }
+        $commonData = [
+            'pageTitle' => 'Add New Role',
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Roles', 'url' => 'admin/listRoles'],
+                ['label' => 'Add Role']
+            ]
+        ];
+
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+            $formData = [
+                'role_key' => trim($_POST['role_key'] ?? ''),
+                'role_name' => trim($_POST['role_name'] ?? ''),
+                'role_description' => trim($_POST['role_description'] ?? ''),
+                'is_system_role' => isset($_POST['is_system_role']) ? 1 : 0,
+                'errors' => []
+            ];
+            $data = array_merge($commonData, $formData);
+
+            if (empty($data['role_key'])) $data['errors']['role_key_err'] = 'Role Key is required (e.g., new_role_key).';
+            elseif (!preg_match('/^[a-z0-9_]+$/', $data['role_key'])) $data['errors']['role_key_err'] = 'Role Key can only contain lowercase letters, numbers, and underscores.';
+            if (empty($data['role_name'])) $data['errors']['role_name_err'] = 'Role Name is required.';
+            if ($this->roleModel->getRoleByKey($data['role_key'])) $data['errors']['role_key_err'] = 'This Role Key already exists.';
+
+
+            if (empty($data['errors'])) {
+                if ($this->roleModel->createRole($data['role_key'], $data['role_name'], $data['role_description'], $data['is_system_role'])) {
+                    $_SESSION['admin_message'] = 'Role created successfully!';
+                    redirect('admin/listRoles');
+                } else {
+                    $data['errors']['form_err'] = 'Could not create role. Key might already exist.';
+                    $this->view('admin/role_form', $data); // New view: admin/role_form.php
+                }
+            } else {
+                $this->view('admin/role_form', $data);
+            }
+        } else {
+            $data = array_merge($commonData, [
+                'role_key' => '', 'role_name' => '', 'role_description' => '', 'is_system_role' => 0,
+                'errors' => []
+            ]);
+            $this->view('admin/role_form', $data);
+        }
+    }
+
+    /**
+     * Display form to edit an existing role OR process updating an existing role.
+     * @param int $roleId The ID of the role to edit.
+     */
+    public function editRole($roleId = null) {
+        if (!userHasCapability('MANAGE_ROLES')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to edit roles.';
+            redirect('admin/listRoles');
+        }
+        if ($roleId === null) redirect('admin/listRoles');
+        $roleId = (int)$roleId;
+        $role = $this->roleModel->getRoleById($roleId);
+
+        if (!$role) {
+            $_SESSION['admin_message'] = 'Role not found.';
+            redirect('admin/listRoles');
+        }
+
+        $commonData = [
+            'pageTitle' => 'Edit Role',
+            'role' => $role, // Original role data
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Roles', 'url' => 'admin/listRoles'],
+                ['label' => 'Edit Role: ' . htmlspecialchars($role['role_name'])]
+            ]
+        ];
+        
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+            $formData = [
+                'role_id' => $roleId,
+                // role_key is not editable after creation
+                'role_name' => trim($_POST['role_name'] ?? ''),
+                'role_description' => trim($_POST['role_description'] ?? ''),
+                // Only allow changing is_system_role if it's not the 'admin' role
+                'is_system_role' => ($role['role_key'] === 'admin') ? $role['is_system_role'] : (isset($_POST['is_system_role']) ? 1 : 0),
+                'errors' => []
+            ];
+            $data = array_merge($commonData, $formData);
+            $data['role'] = array_merge($role, $formData); // Update 'role' in data for re-display
+
+            if (empty($data['role_name'])) $data['errors']['role_name_err'] = 'Role Name is required.';
+            
+            // Prevent changing 'admin' role from being a system role
+            if ($role['role_key'] === 'admin' && !$data['is_system_role']) {
+                $data['errors']['is_system_role_err'] = 'The "admin" role must remain a system role.';
+                $data['is_system_role'] = true; // Force it back for re-display
+            }
+
+
+            if (empty($data['errors'])) {
+                if ($this->roleModel->updateRole($roleId, $data['role_name'], $data['role_description'], $data['is_system_role'])) {
+                    $_SESSION['admin_message'] = 'Role updated successfully!';
+                    redirect('admin/listRoles');
+                } else {
+                    $data['errors']['form_err'] = 'Could not update role.';
+                    $this->view('admin/role_form', $data);
+                }
+            } else {
+                $this->view('admin/role_form', $data);
+            }
+        } else {
+            $data = array_merge($commonData, [
+                'role_id' => $role['role_id'],
+                'role_key' => $role['role_key'], // For display, not editing
+                'role_name' => $role['role_name'],
+                'role_description' => $role['role_description'],
+                'is_system_role' => $role['is_system_role'],
+                'errors' => []
+            ]);
+            $this->view('admin/role_form', $data);
+        }
+    }
+
+    /**
+     * Delete a role.
+     * @param int $roleId The ID of the role to delete.
+     */
+    public function deleteRole($roleId = null) {
+        if (!userHasCapability('MANAGE_ROLES')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to delete roles.';
+            redirect('admin/listRoles');
+        }
+        if ($roleId === null) redirect('admin/listRoles');
+        $roleId = (int)$roleId;
+        $role = $this->roleModel->getRoleById($roleId);
+
+        if (!$role) {
+            $_SESSION['admin_message'] = 'Error: Role not found.';
+        } elseif ($role['is_system_role']) {
+            $_SESSION['admin_message'] = 'Error: System roles (like "'.htmlspecialchars($role['role_name']).'") cannot be deleted.';
+        } elseif ($this->roleModel->deleteRole($roleId)) {
+            $_SESSION['admin_message'] = 'Role "'.htmlspecialchars($role['role_name']).'" deleted successfully. Associated permissions removed, and users reassigned to default role if applicable.';
+        } else {
+            $_SESSION['admin_message'] = 'Error: Could not delete role "'.htmlspecialchars($role['role_name']).'".';
+        }
+        redirect('admin/listRoles');
     }
 
 
