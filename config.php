@@ -34,33 +34,25 @@ define('BASE_URL', '/mainsystem/'); // Adjust this to your actual base URL
 
 /**
  * PDO Database Connection
- *
- * Establishes a PDO connection object.
- * You can use $pdo in other parts of your application to interact with the database.
  */
 $pdo = null;
 $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
 
 $options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch associative arrays
-    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, 
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       
+    PDO::ATTR_EMULATE_PREPARES   => false,                  
 ];
 
 try {
     $pdo = new PDO($dsn, DB_USER, DB_PASSWORD, $options);
 } catch (\PDOException $e) {
-    // In a production environment, you might want to log this error and display a generic message.
-    // For development, throwing the exception can be helpful for debugging.
     error_log("Database Connection Error: " . $e->getMessage());
-    // You could die here or handle it more gracefully depending on your application's needs.
     die("Could not connect to the database. Please check your configuration. Error: " . $e->getMessage());
 }
 
 /**
  * Session Management
- *
- * Starts or resumes a session. This should be called before any output is sent to the browser.
  */
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
@@ -79,6 +71,40 @@ function redirect($url) {
  */
 function isLoggedIn() {
     return isset($_SESSION['user_id']);
+}
+
+/**
+ * Helper function to generate Bootstrap breadcrumbs.
+ *
+ * @param array $breadcrumbs An array of breadcrumb items.
+ * Each item should be an associative array with 'label' and optionally 'url'.
+ * The last item's URL is ignored as it's the active page.
+ * @return string HTML for the breadcrumbs.
+ */
+function generateBreadcrumbs($breadcrumbs = []) {
+    if (empty($breadcrumbs)) {
+        return '';
+    }
+
+    $html = '<nav aria-label="breadcrumb" class="mt-3 mb-3">';
+    $html .= '<ol class="breadcrumb">';
+
+    $count = count($breadcrumbs);
+    foreach ($breadcrumbs as $index => $crumb) {
+        $isActive = ($index === $count - 1);
+        $label = htmlspecialchars($crumb['label']);
+
+        if ($isActive) {
+            $html .= '<li class="breadcrumb-item active" aria-current="page">' . $label . '</li>';
+        } else {
+            $url = isset($crumb['url']) ? BASE_URL . ltrim($crumb['url'], '/') : '#';
+            $html .= '<li class="breadcrumb-item"><a href="' . $url . '">' . $label . '</a></li>';
+        }
+    }
+
+    $html .= '</ol>';
+    $html .= '</nav>';
+    return $html;
 }
 
 ?>

@@ -8,19 +8,16 @@
 class AdminController {
     private $pdo;
     private $userModel; 
-    private $departmentModel; // ADDED: DepartmentModel instance
+    private $departmentModel; 
 
     /**
      * Constructor
-     *
-     * @param PDO $pdo The PDO database connection object.
      */
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
         $this->userModel = new UserModel($this->pdo); 
-        $this->departmentModel = new DepartmentModel($this->pdo); // ADDED: Instantiate DepartmentModel
+        $this->departmentModel = new DepartmentModel($this->pdo); 
 
-        // --- Admin Access Control ---
         if (!isLoggedIn()) {
             redirect('auth/login');
         }
@@ -36,9 +33,12 @@ class AdminController {
     public function index() {
         $data = [
             'pageTitle' => 'Admin Dashboard',
-            'welcomeMessage' => 'Welcome to the Admin Panel, ' . htmlspecialchars($_SESSION['display_name'] ?? 'Admin') . '!'
+            'welcomeMessage' => 'Welcome to the Admin Panel, ' . htmlspecialchars($_SESSION['display_name'] ?? 'Admin') . '!',
+            'breadcrumbs' => [ // ADDED Breadcrumbs
+                ['label' => 'Admin Panel']
+            ]
         ];
-        $this->view('admin/index', $data); // This view needs a link/card for Departments
+        $this->view('admin/index', $data);
     }
 
     // --- User Management Methods ---
@@ -46,41 +46,58 @@ class AdminController {
         $users = $this->userModel->getAllUsers();
         $data = [
             'pageTitle' => 'Manage Users',
-            'users' => $users
+            'users' => $users,
+            'breadcrumbs' => [ // ADDED Breadcrumbs
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Users']
+            ]
         ];
         $this->view('admin/users', $data); 
     }
 
     public function addUser() {
-        $departments = $this->departmentModel->getAllDepartments(); // Get departments for the form
+        $departments = $this->departmentModel->getAllDepartments(); 
+        $commonData = [
+            'pageTitle' => 'Add New User',
+            'departments' => $departments,
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Users', 'url' => 'admin/users'],
+                ['label' => 'Add User']
+            ]
+        ];
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $data = [
+            $formData = [
                 'user_login' => trim($_POST['user_login'] ?? ''),
                 'user_email' => trim($_POST['user_email'] ?? ''),
                 'display_name' => trim($_POST['display_name'] ?? ''),
                 'user_pass' => trim($_POST['user_pass'] ?? ''),
                 'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
                 'user_role' => trim($_POST['user_role'] ?? 'user'), 
-                'department_id' => isset($_POST['department_id']) && !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null, // ADDED department_id
+                'department_id' => isset($_POST['department_id']) && !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null,
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : 0,
-                'pageTitle' => 'Add New User',
-                'departments' => $departments, // Pass departments to the view
                 'errors' => []
             ];
+            $data = array_merge($commonData, $formData);
 
-            // Validation (add department_id validation if needed, e.g., ensure it exists)
+
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
-            // ... (other user validations remain the same) ...
+            if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
+            elseif (!filter_var($data['user_email'], FILTER_VALIDATE_EMAIL)) $data['errors']['user_email_err'] = 'Invalid email format.';
+            if (empty($data['display_name'])) $data['errors']['display_name_err'] = 'Display name is required.';
+            if (empty($data['user_pass'])) $data['errors']['user_pass_err'] = 'Password is required.';
+            elseif (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
+            if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
+            
             $allowedRoles = ['admin', 'editor', 'user'];
             if (!in_array($data['user_role'], $allowedRoles)) {
                 $data['errors']['user_role_err'] = 'Invalid user role selected.';
             }
-            // Check if department_id is valid (exists in departments table)
             if ($data['department_id'] !== null && !$this->departmentModel->getDepartmentById($data['department_id'])) {
                 $data['errors']['department_id_err'] = 'Invalid department selected.';
             }
-
 
             $existingUserByLogin = $this->userModel->findUserByUsernameOrEmail($data['user_login']);
             if ($existingUserByLogin) {
@@ -91,25 +108,19 @@ class AdminController {
                  $data['errors']['user_email_err'] = 'Email already registered.';
             }
 
-
             if (empty($data['errors'])) {
-                // UserModel's createUser will need to be updated to accept department_id
                 $userId = $this->userModel->createUser(
                     $data['user_login'],
                     $data['user_email'],
                     $data['user_pass'],
                     $data['display_name'],
                     $data['user_role'], 
+                    $data['department_id'], // Pass department_id directly
                     $data['user_login'], 
                     $data['user_status']
-                    // We'll update UserModel to handle department_id separately or pass it here
                 );
 
                 if ($userId) {
-                    // Now update the user with department_id if set
-                    if ($data['department_id'] !== null) {
-                        $this->userModel->updateUser($userId, ['department_id' => $data['department_id']]);
-                    }
                     $_SESSION['admin_message'] = 'User created successfully!';
                     redirect('admin/users');
                 } else {
@@ -120,13 +131,11 @@ class AdminController {
                 $this->view('admin/user_form', $data);
             }
         } else {
-            $data = [
-                'pageTitle' => 'Add New User',
+            $data = array_merge($commonData, [
                 'user_login' => '', 'user_email' => '', 'display_name' => '', 
                 'user_role' => 'user', 'department_id' => null, 'user_status' => 0,
-                'departments' => $departments, // Pass departments to the view
                 'errors' => []
-            ];
+            ]);
             $this->view('admin/user_form', $data); 
         }
     }
@@ -134,17 +143,28 @@ class AdminController {
     public function editUser($userId = null) {
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
-        $user = $this->userModel->findUserById($userId); // UserModel->findUserById needs to fetch department_id
+        $user = $this->userModel->findUserById($userId); 
         $departments = $this->departmentModel->getAllDepartments();
 
         if (!$user) {
             $_SESSION['admin_message'] = 'User not found.';
             redirect('admin/users');
         }
+        
+        $commonData = [
+            'pageTitle' => 'Edit User',
+            'departments' => $departments,
+            'user' => $user,
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Users', 'url' => 'admin/users'],
+                ['label' => 'Edit User: ' . htmlspecialchars($user['display_name'])]
+            ]
+        ];
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $data = [
+            $formData = [
                 'user_id' => $userId,
                 'user_login' => trim($_POST['user_login'] ?? ''),
                 'user_email' => trim($_POST['user_email'] ?? ''),
@@ -152,16 +172,22 @@ class AdminController {
                 'user_pass' => trim($_POST['user_pass'] ?? ''), 
                 'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
                 'user_role' => trim($_POST['user_role'] ?? $user['user_role']), 
-                'department_id' => isset($_POST['department_id']) && !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null, // ADDED department_id
+                'department_id' => isset($_POST['department_id']) && !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null,
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : (int)$user['user_status'],
-                'pageTitle' => 'Edit User',
-                'user' => $user, 
-                'departments' => $departments,
                 'errors' => []
             ];
+            $data = array_merge($commonData, $formData);
+            $data['user'] = array_merge($user, $formData); // Ensure 'user' in data reflects POST attempt for re-display
 
-            // Validation (add department_id validation if needed)
-            // ... (other user validations remain the same) ...
+            if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
+            if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
+            elseif (!filter_var($data['user_email'], FILTER_VALIDATE_EMAIL)) $data['errors']['user_email_err'] = 'Invalid email format.';
+            if (empty($data['display_name'])) $data['errors']['display_name_err'] = 'Display name is required.';
+            if (!empty($data['user_pass'])) {
+                if (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
+                if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
+            }
+            
             $allowedRoles = ['admin', 'editor', 'user'];
             if (!in_array($data['user_role'], $allowedRoles)) $data['errors']['user_role_err'] = 'Invalid user role selected.';
             if ($userId == 1 && $data['user_role'] !== 'admin') {
@@ -181,21 +207,20 @@ class AdminController {
                  $data['errors']['user_email_err'] = 'Email already registered by another user.';
             }
 
-
             if (empty($data['errors'])) {
                 $updateData = [
                     'user_login' => $data['user_login'],
                     'user_email' => $data['user_email'],
                     'display_name' => $data['display_name'],
                     'user_role' => $data['user_role'], 
-                    'department_id' => $data['department_id'], // ADDED department_id
+                    'department_id' => $data['department_id'], 
                     'user_status' => $data['user_status']
                 ];
                 if (!empty($data['user_pass'])) {
                     $updateData['user_pass'] = $data['user_pass']; 
                 }
 
-                if ($this->userModel->updateUser($userId, $updateData)) { // UserModel->updateUser needs to handle department_id
+                if ($this->userModel->updateUser($userId, $updateData)) { 
                     $_SESSION['admin_message'] = 'User updated successfully!';
                     redirect('admin/users');
                 } else {
@@ -206,25 +231,21 @@ class AdminController {
                 $this->view('admin/user_form', $data);
             }
         } else {
-            $data = [
-                'pageTitle' => 'Edit User',
-                'user_id' => $user['user_id'],
+            $data = array_merge($commonData, [
+                'user_id' => $user['user_id'], // Ensure user_id is passed for the form
                 'user_login' => $user['user_login'],
                 'user_email' => $user['user_email'],
                 'display_name' => $user['display_name'],
                 'user_role' => $user['user_role'], 
-                'department_id' => $user['department_id'] ?? null, // ADDED department_id
+                'department_id' => $user['department_id'] ?? null, 
                 'user_status' => (int)$user['user_status'],
-                'user' => $user,
-                'departments' => $departments,
                 'errors' => []
-            ];
+            ]);
             $this->view('admin/user_form', $data);
         }
     }
 
     public function deleteUser($userId = null) {
-        // ... (deleteUser method remains largely the same for now) ...
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $userToDelete = $this->userModel->findUserById($userId);
@@ -244,39 +265,44 @@ class AdminController {
     }
 
     // --- Department Management Methods ---
-
-    /**
-     * List all departments.
-     */
     public function departments() {
         $departments = $this->departmentModel->getAllDepartments();
-        // Optionally, get user count for each department
         if ($departments) {
-            foreach ($departments as &$dept) { // Use reference to modify array directly
+            foreach ($departments as &$dept) { 
                 $dept['user_count'] = $this->departmentModel->getUserCountByDepartment($dept['department_id']);
             }
-            unset($dept); // Unset reference
+            unset($dept); 
         }
         
         $data = [
             'pageTitle' => 'Manage Departments',
-            'departments' => $departments
+            'departments' => $departments,
+            'breadcrumbs' => [ // ADDED Breadcrumbs
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Departments']
+            ]
         ];
-        $this->view('admin/departments', $data); // New view: admin/departments.php
+        $this->view('admin/departments', $data); 
     }
 
-    /**
-     * Display form to add a new department OR process adding a new department.
-     */
     public function addDepartment() {
+        $commonData = [
+            'pageTitle' => 'Add New Department',
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Departments', 'url' => 'admin/departments'],
+                ['label' => 'Add Department']
+            ]
+        ];
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $data = [
+            $formData = [
                 'department_name' => trim($_POST['department_name'] ?? ''),
                 'department_description' => trim($_POST['department_description'] ?? ''),
-                'pageTitle' => 'Add New Department',
                 'errors' => []
             ];
+            $data = array_merge($commonData, $formData);
 
             if (empty($data['department_name'])) {
                 $data['errors']['department_name_err'] = 'Department name is required.';
@@ -288,25 +314,20 @@ class AdminController {
                     redirect('admin/departments');
                 } else {
                     $data['errors']['form_err'] = 'Could not create department. Name might already exist.';
-                    $this->view('admin/department_form', $data); // New view: admin/department_form.php
+                    $this->view('admin/department_form', $data); 
                 }
             } else {
                 $this->view('admin/department_form', $data);
             }
         } else {
-            $data = [
-                'pageTitle' => 'Add New Department',
+            $data = array_merge($commonData, [
                 'department_name' => '', 'department_description' => '',
                 'errors' => []
-            ];
+            ]);
             $this->view('admin/department_form', $data);
         }
     }
 
-    /**
-     * Display form to edit an existing department OR process updating an existing department.
-     * @param int $departmentId The ID of the department to edit.
-     */
     public function editDepartment($departmentId = null) {
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
@@ -317,16 +338,26 @@ class AdminController {
             redirect('admin/departments');
         }
 
+        $commonData = [
+            'pageTitle' => 'Edit Department',
+            'department' => $department,
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Manage Departments', 'url' => 'admin/departments'],
+                ['label' => 'Edit Department: ' . htmlspecialchars($department['department_name'])]
+            ]
+        ];
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $data = [
+            $formData = [
                 'department_id' => $departmentId,
                 'department_name' => trim($_POST['department_name'] ?? ''),
                 'department_description' => trim($_POST['department_description'] ?? ''),
-                'pageTitle' => 'Edit Department',
-                'department' => $department,
                 'errors' => []
             ];
+            $data = array_merge($commonData, $formData);
+            $data['department'] = array_merge($department, $formData); // Ensure 'department' reflects POST attempt
 
             if (empty($data['department_name'])) {
                 $data['errors']['department_name_err'] = 'Department name is required.';
@@ -344,32 +375,19 @@ class AdminController {
                 $this->view('admin/department_form', $data);
             }
         } else {
-            $data = [
-                'pageTitle' => 'Edit Department',
-                'department_id' => $department['department_id'],
+            $data = array_merge($commonData, [
+                'department_id' => $department['department_id'], // Ensure department_id is passed for form
                 'department_name' => $department['department_name'],
                 'department_description' => $department['department_description'],
-                'department' => $department,
                 'errors' => []
-            ];
+            ]);
             $this->view('admin/department_form', $data);
         }
     }
 
-    /**
-     * Delete a department.
-     * @param int $departmentId The ID of the department to delete.
-     */
     public function deleteDepartment($departmentId = null) {
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
-
-        // Optional: Check if department is empty before deleting if ON DELETE RESTRICT was used
-        // $userCount = $this->departmentModel->getUserCountByDepartment($departmentId);
-        // if ($userCount > 0) {
-        //     $_SESSION['admin_message'] = 'Error: Cannot delete department. It has users assigned to it.';
-        //     redirect('admin/departments');
-        // }
 
         if ($this->departmentModel->deleteDepartment($departmentId)) {
             $_SESSION['admin_message'] = 'Department deleted successfully. Users in this department are now unassigned.';
@@ -378,7 +396,6 @@ class AdminController {
         }
         redirect('admin/departments');
     }
-
 
     /**
      * Load a view file for the admin area.

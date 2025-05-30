@@ -30,7 +30,6 @@ if (!defined('BASE_URL')) {
                         <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'dashboard') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
                     </li>
                     <?php 
-                    // MODIFIED: Check for 'admin' role from session
                     if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): 
                     ?>
                         <li class="nav-item">
@@ -57,5 +56,12 @@ if (!defined('BASE_URL')) {
     </div>
 </nav>
 
-<div class="container mt-4 mb-5"> <div class="main-content">
+<div class="container mt-4 mb-5"> 
+    <?php
+    // Display breadcrumbs if the $breadcrumbs variable is set
+    if (isset($breadcrumbs) && is_array($breadcrumbs)) {
+        echo generateBreadcrumbs($breadcrumbs);
+    }
+    ?>
+    <div class="main-content">
         

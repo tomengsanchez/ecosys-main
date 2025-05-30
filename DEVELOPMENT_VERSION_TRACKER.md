@@ -4,6 +4,34 @@ This document tracks the development progress, versions, and notable changes for
 
 ---
 
+## Version 0.6.0 - Breadcrumb Navigation (2025-05-30)
+
+**Date:** 2025-05-30
+
+**Features Implemented:**
+
+* **Breadcrumb Helper Function:**
+    * Added `generateBreadcrumbs()` helper function to `config.php` to generate Bootstrap-styled breadcrumb HTML.
+* **Layout Integration (`header.php`):**
+    * Modified `header.php` to display breadcrumbs below the main navigation if a `$breadcrumbs` array is passed to the view.
+* **Controller Integration:**
+    * `AuthController.php`: Added breadcrumb data for the login page.
+    * `DashboardController.php`: Added breadcrumb data for the main dashboard page.
+    * `AdminController.php`: Added breadcrumb data for admin dashboard, user list, add/edit user forms, department list, and add/edit department forms.
+    * Refactored `AdminController` `addUser`, `editUser`, `addDepartment`, and `editDepartment` methods to use a `$commonData` array for shared view data (like breadcrumbs) to reduce duplication.
+
+**Key Changes & Fixes:**
+
+* Implemented a dynamic breadcrumb navigation system across various parts of the application.
+* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php`.
+
+**To-Do / Next Steps (Examples for Breadcrumbs):**
+
+* Ensure breadcrumbs are added to any new pages/sections.
+* Consider more complex breadcrumb generation if needed for deeply nested content.
+
+---
+
 ## Version 0.5.0 - Department Module & User Assignment (2025-05-30)
 
 **Date:** 2025-05-30
