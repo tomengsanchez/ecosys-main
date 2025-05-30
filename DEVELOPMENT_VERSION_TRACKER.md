@@ -4,6 +4,44 @@ This document tracks the development progress, versions, and notable changes for
 
 ---
 
+## Version 0.7.0 - Site Settings Module (2025-05-30)
+
+**Date:** 2025-05-30
+
+**Features Implemented:**
+
+* **`OptionModel.php`:**
+    * Created to manage CRUD operations for site settings stored in the `options` table.
+    * Methods include `getOption()`, `getOptions()`, `addOption()`, `updateOption()`, `saveOptions()`, `deleteOption()`.
+    * Includes a basic in-memory cache for loaded options.
+* **`AdminController.php` - Site Settings Action:**
+    * Instantiated `OptionModel`.
+    * Added `siteSettings()` action:
+        * Defines a list of manageable options (e.g., `site_name`, `site_tagline`, `admin_email`, `items_per_page`).
+        * Handles POST requests to save updated settings using `OptionModel::saveOptions()`.
+        * Handles GET requests to display the settings form, prefilled with current values or defaults, using `OptionModel::getOptions()`.
+* **Admin View for Site Settings:**
+    * Created `app/views/admin/site_settings.php`:
+        * Dynamically generates a form based on the `$manageableOptions` array from the controller.
+        * Allows updating defined site settings.
+        * Supports different input types (text, textarea, select, number) based on option definition.
+* **Admin UI Updates:**
+    * `app/views/admin/index.php`: Added a card/link for "Site Settings".
+    * `app/views/layouts/header.php`: Added "Site Settings" to the "Admin" dropdown menu.
+
+**Key Changes & Fixes:**
+
+* Implemented a basic module for administrators to manage global site settings.
+* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php` (repeated correction as per context).
+
+**To-Do / Next Steps (Examples for Site Settings):**
+
+* Add more site settings as needed (e.g., date format, timezone, theme selection).
+* Implement more robust validation for each setting type.
+* Use the retrieved site settings throughout the application (e.g., display `site_name` in the browser title or header).
+
+---
+
 ## Version 0.6.0 - Breadcrumb Navigation (2025-05-30)
 
 **Date:** 2025-05-30
@@ -23,7 +61,6 @@ This document tracks the development progress, versions, and notable changes for
 **Key Changes & Fixes:**
 
 * Implemented a dynamic breadcrumb navigation system across various parts of the application.
-* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php`.
 
 **To-Do / Next Steps (Examples for Breadcrumbs):**
 

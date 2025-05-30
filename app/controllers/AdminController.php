@@ -9,6 +9,7 @@ class AdminController {
     private $pdo;
     private $userModel; 
     private $departmentModel; 
+    private $optionModel; // ADDED: OptionModel instance
 
     /**
      * Constructor
@@ -17,6 +18,7 @@ class AdminController {
         $this->pdo = $pdo;
         $this->userModel = new UserModel($this->pdo); 
         $this->departmentModel = new DepartmentModel($this->pdo); 
+        $this->optionModel = new OptionModel($this->pdo); // ADDED: Instantiate OptionModel
 
         if (!isLoggedIn()) {
             redirect('auth/login');
@@ -34,20 +36,21 @@ class AdminController {
         $data = [
             'pageTitle' => 'Admin Dashboard',
             'welcomeMessage' => 'Welcome to the Admin Panel, ' . htmlspecialchars($_SESSION['display_name'] ?? 'Admin') . '!',
-            'breadcrumbs' => [ // ADDED Breadcrumbs
+            'breadcrumbs' => [ 
                 ['label' => 'Admin Panel']
             ]
         ];
-        $this->view('admin/index', $data);
+        $this->view('admin/index', $data); // This view needs a link/card for Site Settings
     }
 
     // --- User Management Methods ---
+    // ... (users, addUser, editUser, deleteUser methods remain here, unchanged for this step) ...
     public function users() {
         $users = $this->userModel->getAllUsers();
         $data = [
             'pageTitle' => 'Manage Users',
             'users' => $users,
-            'breadcrumbs' => [ // ADDED Breadcrumbs
+            'breadcrumbs' => [ 
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users']
             ]
@@ -115,7 +118,7 @@ class AdminController {
                     $data['user_pass'],
                     $data['display_name'],
                     $data['user_role'], 
-                    $data['department_id'], // Pass department_id directly
+                    $data['department_id'], 
                     $data['user_login'], 
                     $data['user_status']
                 );
@@ -177,7 +180,7 @@ class AdminController {
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
-            $data['user'] = array_merge($user, $formData); // Ensure 'user' in data reflects POST attempt for re-display
+            $data['user'] = array_merge($user, $formData); 
 
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
             if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
@@ -232,7 +235,7 @@ class AdminController {
             }
         } else {
             $data = array_merge($commonData, [
-                'user_id' => $user['user_id'], // Ensure user_id is passed for the form
+                'user_id' => $user['user_id'], 
                 'user_login' => $user['user_login'],
                 'user_email' => $user['user_email'],
                 'display_name' => $user['display_name'],
@@ -264,7 +267,9 @@ class AdminController {
         redirect('admin/users');
     }
 
+
     // --- Department Management Methods ---
+    // ... (departments, addDepartment, editDepartment, deleteDepartment methods remain here) ...
     public function departments() {
         $departments = $this->departmentModel->getAllDepartments();
         if ($departments) {
@@ -277,7 +282,7 @@ class AdminController {
         $data = [
             'pageTitle' => 'Manage Departments',
             'departments' => $departments,
-            'breadcrumbs' => [ // ADDED Breadcrumbs
+            'breadcrumbs' => [ 
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Departments']
             ]
@@ -357,7 +362,7 @@ class AdminController {
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
-            $data['department'] = array_merge($department, $formData); // Ensure 'department' reflects POST attempt
+            $data['department'] = array_merge($department, $formData); 
 
             if (empty($data['department_name'])) {
                 $data['errors']['department_name_err'] = 'Department name is required.';
@@ -376,7 +381,7 @@ class AdminController {
             }
         } else {
             $data = array_merge($commonData, [
-                'department_id' => $department['department_id'], // Ensure department_id is passed for form
+                'department_id' => $department['department_id'], 
                 'department_name' => $department['department_name'],
                 'department_description' => $department['department_description'],
                 'errors' => []
@@ -396,6 +401,57 @@ class AdminController {
         }
         redirect('admin/departments');
     }
+
+    // --- Site Settings Method ---
+    public function siteSettings() {
+        // Define which options are manageable through the UI
+        $manageableOptions = [
+            'site_name' => 'Default Site Name',
+            'site_tagline' => 'Just another Mainsystem site',
+            'admin_email' => 'admin@example.com',
+            'items_per_page' => 10,
+            // Add more settings as needed, e.g., 'maintenance_mode' => 'off'
+        ];
+        $optionKeys = array_keys($manageableOptions);
+
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+            $settingsToSave = [];
+            foreach ($optionKeys as $key) {
+                if (isset($_POST[$key])) {
+                    // Basic sanitization, you might need more specific validation per option
+                    $settingsToSave[$key] = trim($_POST[$key]);
+                }
+            }
+
+            if ($this->optionModel->saveOptions($settingsToSave)) {
+                $_SESSION['admin_message'] = 'Site settings updated successfully!';
+            } else {
+                $_SESSION['admin_message'] = 'Error: Could not save all site settings.';
+            }
+            // Redirect to refresh the page and show message (or stay and show message)
+            redirect('admin/siteSettings');
+        }
+
+        // GET request: Load current settings
+        $currentSettings = [];
+        $dbOptions = $this->optionModel->getOptions($optionKeys);
+        foreach ($manageableOptions as $key => $defaultValue) {
+            $currentSettings[$key] = $dbOptions[$key] ?? $defaultValue;
+        }
+        
+        $data = [
+            'pageTitle' => 'Site Settings',
+            'settings' => $currentSettings,
+            'manageableOptions' => $manageableOptions, // To know which fields to display
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Site Settings']
+            ]
+        ];
+        $this->view('admin/site_settings', $data); // New view: admin/site_settings.php
+    }
+
 
     /**
      * Load a view file for the admin area.

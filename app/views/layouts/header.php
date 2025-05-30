@@ -98,9 +98,11 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                                 Admin
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminDropdown">
-                                <li><a class="dropdown-item <?php echo isActive('admin', $currentPath, $basePathStripped) && !strpos($currentPath, '/users') && !strpos($currentPath, '/departments') && !strpos($currentPath, '/dtr') && !strpos($currentPath, '/assets') ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
+                                <li><a class="dropdown-item <?php echo isActive('admin', $currentPath, $basePathStripped) && !strpos($currentPath, '/users') && !strpos($currentPath, '/departments') && !strpos($currentPath, '/dtr') && !strpos($currentPath, '/assets') && !strpos($currentPath, '/siteSettings') ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
                                 <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
                                 <li><a class="dropdown-item <?php echo isActive('admin/departments', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/departments'; ?>">Departments</a></li>
+                                <li><a class="dropdown-item <?php echo isActive('admin/siteSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/siteSettings'; ?>">Site Settings</a></li>
+                                <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item <?php echo isActive('admin/dtr', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/dtr'; ?>">DTR</a></li>
                                 <li><a class="dropdown-item <?php echo isActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/assets'; ?>">Assets</a></li>
                             </ul>
