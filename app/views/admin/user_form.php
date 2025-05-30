@@ -1,5 +1,5 @@
 <?php
-// pageTitle, errors, and user data (user_id, user_login, user_email, display_name, user_role, user_status)
+// pageTitle, errors, user data, and departments array
 // are passed from AdminController's addUser() or editUser() methods.
 
 // Determine if we are editing or adding
@@ -81,9 +81,8 @@ require_once __DIR__ . '/../layouts/header.php';
                         <label for="user_role" class="form-label">User Role <span class="text-danger">*</span></label>
                         <select name="user_role" id="user_role" class="form-select <?php echo (!empty($errors['user_role_err'])) ? 'is-invalid' : ''; ?>" required>
                             <?php
-                            $currentRole = $user_role ?? 'user'; // Default to 'user' if not set
+                            $currentRole = $user_role ?? 'user'; 
                             foreach ($availableRoles as $roleValue => $roleLabel):
-                                // Prevent changing user_id 1 from 'admin' if editing that user
                                 $disabled = ($isEditing && isset($user_id) && $user_id == 1 && $roleValue !== 'admin') ? 'disabled' : '';
                             ?>
                                 <option value="<?php echo htmlspecialchars($roleValue); ?>" <?php echo ($currentRole == $roleValue) ? 'selected' : ''; ?> <?php echo $disabled; ?>>
@@ -99,6 +98,25 @@ require_once __DIR__ . '/../layouts/header.php';
                         <?php endif; ?>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="department_id" class="form-label">Department</label>
+                        <select name="department_id" id="department_id" class="form-select <?php echo (!empty($errors['department_id_err'])) ? 'is-invalid' : ''; ?>">
+                            <option value="">-- Select Department (Optional) --</option>
+                            <?php if (!empty($departments) && is_array($departments)): ?>
+                                <?php 
+                                $currentDepartmentId = $department_id ?? null; // Passed from controller
+                                foreach ($departments as $department): 
+                                ?>
+                                    <option value="<?php echo htmlspecialchars($department['department_id']); ?>" <?php echo ($currentDepartmentId == $department['department_id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($department['department_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+                        <?php if (!empty($errors['department_id_err'])): ?>
+                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['department_id_err']); ?></div>
+                        <?php endif; ?>
+                    </div>
                     <div class="mb-3">
                         <label for="user_status" class="form-label">User Status</label>
                         <select name="user_status" id="user_status" class="form-select <?php echo (!empty($errors['user_status_err'])) ? 'is-invalid' : ''; ?>">

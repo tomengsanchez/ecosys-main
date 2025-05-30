@@ -4,6 +4,52 @@ This document tracks the development progress, versions, and notable changes for
 
 ---
 
+## Version 0.5.0 - Department Module & User Assignment (2025-05-30)
+
+**Date:** 2025-05-30
+
+**Features Implemented:**
+
+* **Database Schema for Departments:**
+    * Created `departments` table (`department_id`, `department_name`, `department_description`, `created_at`).
+    * Added `department_id` (nullable, foreign key) to the `users` table.
+    * Set `ON DELETE SET NULL` for the foreign key to handle department deletion.
+* **`DepartmentModel.php`:**
+    * Created to handle CRUD operations for departments (`createDepartment`, `getDepartmentById`, `getAllDepartments`, `updateDepartment`, `deleteDepartment`).
+    * Added `getUserCountByDepartment()` to count users in a department.
+* **`AdminController.php` Enhancements for Departments:**
+    * Instantiated `DepartmentModel`.
+    * Added `departments()` action to list departments (with user counts).
+    * Added `addDepartment()` action for creating new departments (with form display and processing).
+    * Added `editDepartment()` action for updating existing departments (with form display and processing).
+    * Added `deleteDepartment()` action.
+    * Modified `addUser()` and `editUser()` to fetch departments and pass them to the user form.
+* **`UserModel.php` Enhancements for Departments:**
+    * `findUserByUsernameOrEmail()`, `findUserById()`: Now fetch `department_id`.
+    * `getAllUsers()`: Now fetches `department_id` and `department_name` (via LEFT JOIN).
+    * `createUser()`: Accepts `department_id` and stores it.
+    * `updateUser()`: Allows updating `department_id` (including setting to NULL).
+* **Admin Views for Department Management:**
+    * `app/views/admin/departments.php`: View to list departments, showing name, description, user count, and actions (add, edit, delete).
+    * `app/views/admin/department_form.php`: Reusable form for adding and editing departments.
+* **Admin View Updates for User-Department Assignment:**
+    * `app/views/admin/user_form.php`: Added a dropdown to select/assign a department to a user.
+    * `app/views/admin/users.php`: Displays the assigned department name in the user list.
+* **Admin Dashboard UI (`app/views/admin/index.php`):**
+    * Added a card/link for "Manage Departments".
+
+**Key Changes & Fixes:**
+
+* Integrated department management into the admin panel.
+* Users can now be assigned to departments.
+
+**To-Do / Next Steps (Examples for Department Module):**
+
+* Filter users by department in the user list.
+* Add more detailed views for departments (e.g., list users within a specific department).
+
+---
+
 ## Version 0.4.0 - Role-Based Access Control (RBAC) - Basic (2025-05-30)
 
 **Date:** 2025-05-30
@@ -35,7 +81,7 @@ This document tracks the development progress, versions, and notable changes for
 **Key Changes & Fixes:**
 
 * Shifted from `user_id`-based admin access to a basic role-based system ('admin', 'editor', 'user').
-* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php`.
+* Corrected `integrity` attributes for CDN links in `header.php`.
 
 **To-Do / Next Steps (Examples for RBAC):**
 
@@ -166,4 +212,4 @@ This document tracks the development progress, versions, and notable changes for
 
 ## Version X.Y.Z (Future Version)
 
-**Date:** 2025.03.30
+**Date:**

@@ -1,5 +1,5 @@
 <?php
-// pageTitle and users array are passed from AdminController's users() method
+// pageTitle and users array (with department_name) are passed from AdminController's users() method
 
 // Include header
 require_once __DIR__ . '/../layouts/header.php';
@@ -16,7 +16,7 @@ require_once __DIR__ . '/../layouts/header.php';
     <?php
     // Display any session messages
     if (isset($_SESSION['admin_message'])) {
-        $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && strpos(strtolower($_SESSION['admin_message']), 'fail') === false) ? 'success' : 'danger';
+        $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && strpos(strtolower($_SESSION['admin_message']), 'fail') === false && strpos(strtolower($_SESSION['admin_message']), 'cannot') === false) ? 'success' : 'danger';
         echo '<div class="alert alert-' . $alertType . ' alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['admin_message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
@@ -41,7 +41,8 @@ require_once __DIR__ . '/../layouts/header.php';
                         <th>Username</th>
                         <th>Email</th>
                         <th>Display Name</th>
-                        <th>Role</th> <th>Registered</th>
+                        <th>Role</th>
+                        <th>Department</th> <th>Registered</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -53,7 +54,8 @@ require_once __DIR__ . '/../layouts/header.php';
                             <td><?php echo htmlspecialchars($user['user_login']); ?></td>
                             <td><?php echo htmlspecialchars($user['user_email']); ?></td>
                             <td><?php echo htmlspecialchars($user['display_name']); ?></td>
-                            <td><?php echo htmlspecialchars(ucfirst($user['user_role'])); ?></td> <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($user['user_registered']))); ?></td>
+                            <td><?php echo htmlspecialchars(ucfirst($user['user_role'])); ?></td>
+                            <td><?php echo htmlspecialchars($user['department_name'] ?? 'N/A'); ?></td> <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($user['user_registered']))); ?></td>
                             <td>
                                 <?php if ($user['user_status'] == 0): ?>
                                     <span class="badge bg-success">Active</span>
@@ -66,7 +68,6 @@ require_once __DIR__ . '/../layouts/header.php';
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
                                 <?php 
-                                // Prevent deleting self or the primary super admin (user_id 1 with 'admin' role)
                                 if ($user['user_id'] != $_SESSION['user_id'] && !($user['user_id'] == 1 && $user['user_role'] === 'admin')): 
                                 ?>
                                     <a href="<?php echo BASE_URL . 'admin/deleteUser/' . htmlspecialchars($user['user_id']); ?>" 
