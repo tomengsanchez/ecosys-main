@@ -10,6 +10,7 @@ if (!defined('BASE_URL')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $pageTitle ?? 'My Application'; ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" xintegrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
 
@@ -29,15 +30,22 @@ if (!defined('BASE_URL')) {
                         <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'dashboard') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
                     </li>
                     <?php 
-                    // Check if the logged-in user is an admin (user_id == 1 for now)
-                    if (isset($_SESSION['user_id']) && $_SESSION['user_id'] == 1): 
+                    // MODIFIED: Check for 'admin' role from session
+                    if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): 
                     ?>
                         <li class="nav-item">
                             <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'admin') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Panel</a>
                         </li>
                     <?php endif; ?>
-                    <li class="nav-item">
-                        <a class="nav-link" href="<?php echo BASE_URL . 'auth/logout'; ?>">Logout (<?php echo htmlspecialchars($_SESSION['display_name'] ?? ''); ?>)</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarUserDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user"></i> <?php echo htmlspecialchars($_SESSION['display_name'] ?? 'User'); ?>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarUserDropdown">
+                            <li><a class="dropdown-item" href="#">Profile (Soon)</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="<?php echo BASE_URL . 'auth/logout'; ?>">Logout</a></li>
+                        </ul>
                     </li>
                 <?php else: ?>
                     <li class="nav-item">
@@ -49,6 +57,5 @@ if (!defined('BASE_URL')) {
     </div>
 </nav>
 
-<div class="container mt-4">
-    <div class="main-content">
+<div class="container mt-4 mb-5"> <div class="main-content">
         

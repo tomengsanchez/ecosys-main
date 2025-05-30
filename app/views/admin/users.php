@@ -14,17 +14,16 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // Display any session messages (e.g., success/error after an action)
+    // Display any session messages
     if (isset($_SESSION['admin_message'])) {
-        // Determine alert type based on message content (simple check)
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && strpos(strtolower($_SESSION['admin_message']), 'fail') === false) ? 'success' : 'danger';
         echo '<div class="alert alert-' . $alertType . ' alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['admin_message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
              '</div>';
-        unset($_SESSION['admin_message']); // Clear message after displaying
+        unset($_SESSION['admin_message']); 
     }
-    if (isset($_SESSION['error_message'])) { // For general errors from controller constructor
+    if (isset($_SESSION['error_message'])) { 
         echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['error_message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
@@ -42,7 +41,7 @@ require_once __DIR__ . '/../layouts/header.php';
                         <th>Username</th>
                         <th>Email</th>
                         <th>Display Name</th>
-                        <th>Registered</th>
+                        <th>Role</th> <th>Registered</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -54,7 +53,7 @@ require_once __DIR__ . '/../layouts/header.php';
                             <td><?php echo htmlspecialchars($user['user_login']); ?></td>
                             <td><?php echo htmlspecialchars($user['user_email']); ?></td>
                             <td><?php echo htmlspecialchars($user['display_name']); ?></td>
-                            <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($user['user_registered']))); ?></td>
+                            <td><?php echo htmlspecialchars(ucfirst($user['user_role'])); ?></td> <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($user['user_registered']))); ?></td>
                             <td>
                                 <?php if ($user['user_status'] == 0): ?>
                                     <span class="badge bg-success">Active</span>
@@ -66,7 +65,10 @@ require_once __DIR__ . '/../layouts/header.php';
                                 <a href="<?php echo BASE_URL . 'admin/editUser/' . htmlspecialchars($user['user_id']); ?>" class="btn btn-sm btn-primary me-1" title="Edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
-                                <?php if ($user['user_id'] != $_SESSION['user_id'] && $user['user_id'] != 1): // Prevent deleting self or super admin ?>
+                                <?php 
+                                // Prevent deleting self or the primary super admin (user_id 1 with 'admin' role)
+                                if ($user['user_id'] != $_SESSION['user_id'] && !($user['user_id'] == 1 && $user['user_role'] === 'admin')): 
+                                ?>
                                     <a href="<?php echo BASE_URL . 'admin/deleteUser/' . htmlspecialchars($user['user_id']); ?>" 
                                        class="btn btn-sm btn-danger" title="Delete"
                                        onclick="return confirm('Are you sure you want to delete this user? This action cannot be undone.');">

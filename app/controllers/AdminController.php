@@ -7,7 +7,7 @@
  */
 class AdminController {
     private $pdo;
-    private $userModel; // Add UserModel instance
+    private $userModel; 
 
     /**
      * Constructor
@@ -16,13 +16,14 @@ class AdminController {
      */
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
-        $this->userModel = new UserModel($this->pdo); // Instantiate UserModel
+        $this->userModel = new UserModel($this->pdo); 
 
         // --- Admin Access Control ---
         if (!isLoggedIn()) {
             redirect('auth/login');
         }
-        if (!isset($_SESSION['user_id']) || $_SESSION['user_id'] != 1) { // Assuming user_id 1 is admin
+        // MODIFIED: Check for 'admin' role instead of user_id == 1
+        if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'admin') { 
             $_SESSION['error_message'] = "You do not have permission to access the admin area.";
             redirect('dashboard');
         }
@@ -48,7 +49,7 @@ class AdminController {
             'pageTitle' => 'Manage Users',
             'users' => $users
         ];
-        $this->view('admin/users', $data); // View to list users
+        $this->view('admin/users', $data); 
     }
 
     /**
@@ -56,7 +57,6 @@ class AdminController {
      */
     public function addUser() {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            // Process the form
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
 
             $data = [
@@ -65,6 +65,7 @@ class AdminController {
                 'display_name' => trim($_POST['display_name'] ?? ''),
                 'user_pass' => trim($_POST['user_pass'] ?? ''),
                 'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
+                'user_role' => trim($_POST['user_role'] ?? 'user'), // ADDED: Get user_role from form
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : 0,
                 'pageTitle' => 'Add New User',
                 'errors' => []
@@ -78,24 +79,29 @@ class AdminController {
             if (empty($data['user_pass'])) $data['errors']['user_pass_err'] = 'Password is required.';
             elseif (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
             if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
+            // ADDED: Validate user_role (e.g., ensure it's one of the allowed roles)
+            $allowedRoles = ['admin', 'editor', 'user'];
+            if (!in_array($data['user_role'], $allowedRoles)) {
+                $data['errors']['user_role_err'] = 'Invalid user role selected.';
+            }
             
-            // Check if username or email already exists
-            if (empty($data['errors']['user_login_err']) && $this->userModel->findUserByUsernameOrEmail($data['user_login'])) {
+            $existingUserByLogin = $this->userModel->findUserByUsernameOrEmail($data['user_login']);
+            if ($existingUserByLogin) {
                 $data['errors']['user_login_err'] = 'Username already taken.';
             }
-            if (empty($data['errors']['user_email_err']) && $this->userModel->findUserByUsernameOrEmail($data['user_email'])) {
-                $data['errors']['user_email_err'] = 'Email already registered.';
+            $existingUserByEmail = $this->userModel->findUserByUsernameOrEmail($data['user_email']);
+            if ($existingUserByEmail) {
+                 $data['errors']['user_email_err'] = 'Email already registered.';
             }
 
-
             if (empty($data['errors'])) {
-                // Attempt to create user
                 $userId = $this->userModel->createUser(
                     $data['user_login'],
                     $data['user_email'],
                     $data['user_pass'],
                     $data['display_name'],
-                    $data['user_login'], // nicename defaults to user_login
+                    $data['user_role'], // Pass user_role to createUser
+                    $data['user_login'], 
                     $data['user_status']
                 );
 
@@ -107,18 +113,18 @@ class AdminController {
                     $this->view('admin/user_form', $data);
                 }
             } else {
-                // Show form with errors
                 $this->view('admin/user_form', $data);
             }
 
         } else {
-            // Display the empty form
             $data = [
                 'pageTitle' => 'Add New User',
-                'user_login' => '', 'user_email' => '', 'display_name' => '', 'user_status' => 0,
+                'user_login' => '', 'user_email' => '', 'display_name' => '', 
+                'user_role' => 'user', // Default role for new user form
+                'user_status' => 0,
                 'errors' => []
             ];
-            $this->view('admin/user_form', $data); // View for add/edit user form
+            $this->view('admin/user_form', $data); 
         }
     }
 
@@ -127,9 +133,7 @@ class AdminController {
      * @param int $userId The ID of the user to edit.
      */
     public function editUser($userId = null) {
-        if ($userId === null) {
-            redirect('admin/users'); // No ID provided
-        }
+        if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $user = $this->userModel->findUserById($userId);
 
@@ -145,27 +149,35 @@ class AdminController {
                 'user_login' => trim($_POST['user_login'] ?? ''),
                 'user_email' => trim($_POST['user_email'] ?? ''),
                 'display_name' => trim($_POST['display_name'] ?? ''),
-                'user_pass' => trim($_POST['user_pass'] ?? ''), // Optional: for changing password
+                'user_pass' => trim($_POST['user_pass'] ?? ''), 
                 'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
+                'user_role' => trim($_POST['user_role'] ?? $user['user_role']), // ADDED: Get user_role
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : (int)$user['user_status'],
                 'pageTitle' => 'Edit User',
-                'user' => $user, // Pass existing user data to prefill form
+                'user' => $user, 
                 'errors' => []
             ];
 
-            // Validation (similar to addUser, but consider existing values)
+            // Validation
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
             if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
             elseif (!filter_var($data['user_email'], FILTER_VALIDATE_EMAIL)) $data['errors']['user_email_err'] = 'Invalid email format.';
             if (empty($data['display_name'])) $data['errors']['display_name_err'] = 'Display name is required.';
-
-            // Password validation only if a new password is provided
             if (!empty($data['user_pass'])) {
                 if (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
                 if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
             }
+            // ADDED: Validate user_role
+            $allowedRoles = ['admin', 'editor', 'user'];
+            if (!in_array($data['user_role'], $allowedRoles)) {
+                $data['errors']['user_role_err'] = 'Invalid user role selected.';
+            }
+            // Prevent changing the role of user_id 1 (super admin) away from 'admin' by other admins
+            if ($userId == 1 && $data['user_role'] !== 'admin') {
+                 $data['errors']['user_role_err'] = 'The super administrator role cannot be changed.';
+                 $data['user_role'] = 'admin'; // Force it back
+            }
             
-            // Check if new username or email already exists (and doesn't belong to current user)
             $existingUserByLogin = $this->userModel->findUserByUsernameOrEmail($data['user_login']);
             if ($existingUserByLogin && $existingUserByLogin['user_id'] != $userId) {
                  $data['errors']['user_login_err'] = 'Username already taken by another user.';
@@ -175,17 +187,16 @@ class AdminController {
                  $data['errors']['user_email_err'] = 'Email already registered by another user.';
             }
 
-
             if (empty($data['errors'])) {
                 $updateData = [
                     'user_login' => $data['user_login'],
                     'user_email' => $data['user_email'],
                     'display_name' => $data['display_name'],
+                    'user_role' => $data['user_role'], // Pass user_role to updateUser
                     'user_status' => $data['user_status']
-                    // 'user_nicename' could be updated too if you have a field for it
                 ];
                 if (!empty($data['user_pass'])) {
-                    $updateData['user_pass'] = $data['user_pass']; // UserModel will hash it
+                    $updateData['user_pass'] = $data['user_pass']; 
                 }
 
                 if ($this->userModel->updateUser($userId, $updateData)) {
@@ -200,13 +211,13 @@ class AdminController {
             }
 
         } else {
-            // Display the form prefilled with user data
             $data = [
                 'pageTitle' => 'Edit User',
                 'user_id' => $user['user_id'],
                 'user_login' => $user['user_login'],
                 'user_email' => $user['user_email'],
                 'display_name' => $user['display_name'],
+                'user_role' => $user['user_role'], // Pass current role to the form
                 'user_status' => (int)$user['user_status'],
                 'user' => $user,
                 'errors' => []
@@ -220,18 +231,17 @@ class AdminController {
      * @param int $userId The ID of the user to delete.
      */
     public function deleteUser($userId = null) {
-        if ($userId === null) {
-            redirect('admin/users');
-        }
+        if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
-
-        // Add CSRF token check here for POST requests if you implement it
-        // For simplicity, we'll allow GET for deletion for now, but POST with CSRF is better.
         
-        if ($userId == $_SESSION['user_id']) {
+        $userToDelete = $this->userModel->findUserById($userId);
+
+        if (!$userToDelete) {
+            $_SESSION['admin_message'] = 'Error: User not found.';
+        } elseif ($userId == $_SESSION['user_id']) {
              $_SESSION['admin_message'] = 'Error: You cannot delete your own account.';
-        } elseif ($userId == 1) { // Super admin cannot be deleted
-            $_SESSION['admin_message'] = 'Error: The super administrator account cannot be deleted.';
+        } elseif ($userToDelete['user_role'] === 'admin' && $userId == 1) { // Specifically protect user_id 1 if they are admin
+            $_SESSION['admin_message'] = 'Error: The primary super administrator account (ID 1) cannot be deleted.';
         } elseif ($this->userModel->deleteUser($userId)) {
             $_SESSION['admin_message'] = 'User deleted successfully.';
         } else {
@@ -239,7 +249,6 @@ class AdminController {
         }
         redirect('admin/users');
     }
-
 
     /**
      * Load a view file for the admin area.

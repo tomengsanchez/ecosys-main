@@ -1,10 +1,13 @@
 <?php
-// pageTitle, errors, and user data (user_id, user_login, user_email, display_name, user_status)
+// pageTitle, errors, and user data (user_id, user_login, user_email, display_name, user_role, user_status)
 // are passed from AdminController's addUser() or editUser() methods.
 
 // Determine if we are editing or adding
 $isEditing = isset($user_id) && !empty($user_id);
 $formAction = $isEditing ? BASE_URL . 'admin/editUser/' . $user_id : BASE_URL . 'admin/addUser';
+
+// Define available roles
+$availableRoles = ['user' => 'User', 'editor' => 'Editor', 'admin' => 'Admin'];
 
 // Include header
 require_once __DIR__ . '/../layouts/header.php';
@@ -73,6 +76,28 @@ require_once __DIR__ . '/../layouts/header.php';
                         <?php endif; ?>
                     </div>
                      <hr>
+
+                    <div class="mb-3">
+                        <label for="user_role" class="form-label">User Role <span class="text-danger">*</span></label>
+                        <select name="user_role" id="user_role" class="form-select <?php echo (!empty($errors['user_role_err'])) ? 'is-invalid' : ''; ?>" required>
+                            <?php
+                            $currentRole = $user_role ?? 'user'; // Default to 'user' if not set
+                            foreach ($availableRoles as $roleValue => $roleLabel):
+                                // Prevent changing user_id 1 from 'admin' if editing that user
+                                $disabled = ($isEditing && isset($user_id) && $user_id == 1 && $roleValue !== 'admin') ? 'disabled' : '';
+                            ?>
+                                <option value="<?php echo htmlspecialchars($roleValue); ?>" <?php echo ($currentRole == $roleValue) ? 'selected' : ''; ?> <?php echo $disabled; ?>>
+                                    <?php echo htmlspecialchars($roleLabel); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (!empty($errors['user_role_err'])): ?>
+                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['user_role_err']); ?></div>
+                        <?php endif; ?>
+                         <?php if ($isEditing && isset($user_id) && $user_id == 1): ?>
+                            <small class="form-text text-muted">The role of the super administrator (ID 1) cannot be changed from 'Admin'.</small>
+                        <?php endif; ?>
+                    </div>
 
                     <div class="mb-3">
                         <label for="user_status" class="form-label">User Status</label>
