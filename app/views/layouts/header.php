@@ -51,17 +51,31 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                         <a class="nav-link <?php echo isActive('dashboard', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
                     </li>
 
+                    <?php // Open Office Dropdown - visible if user has capability for at least one item inside or a general one
+                    // For simplicity, let's assume a general capability for the whole section.
+                    // You can refine this to check individual item capabilities if needed to show the dropdown.
+                    if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Example capability for the whole dropdown
+                    ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('openoffice', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="openOfficeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             Open Office
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="openOfficeDropdown">
-                            <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Rooms Reservation</a></li>
-                            <li><a class="dropdown-item <?php echo isActive('openoffice/vehicles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/vehicles'; ?>">Vehicle Reservation</a></li>
-                            <li><a class="dropdown-item <?php echo isActive('openoffice/services', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/services'; ?>">Service Request</a></li>
+                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or a more specific one like 'ACCESS_ROOM_RESERVATION' ?>
+                                <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Rooms Reservation</a></li>
+                            <?php endif; ?>
+                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or 'ACCESS_VEHICLE_RESERVATION' ?>
+                                <li><a class="dropdown-item <?php echo isActive('openoffice/vehicles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/vehicles'; ?>">Vehicle Reservation</a></li>
+                            <?php endif; ?>
+                             <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or 'ACCESS_SERVICE_REQUEST' ?>
+                                <li><a class="dropdown-item <?php echo isActive('openoffice/services', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/services'; ?>">Service Request</a></li>
+                            <?php endif; ?>
                         </ul>
                     </li>
+                    <?php endif; ?>
 
+
+                    <?php if (userHasCapability('MANAGE_IT_REQUESTS')): ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('it', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="itDepartmentDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             IT Department
@@ -70,7 +84,9 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                             <li><a class="dropdown-item <?php echo isActive('it/requests', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'it/requests'; ?>">Requests</a></li>
                         </ul>
                     </li>
+                    <?php endif; ?>
 
+                    <?php if (userHasCapability('MANAGE_RAP_CALENDAR')): ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('rap', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="rapDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             Rap
@@ -79,8 +95,10 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                             <li><a class="dropdown-item <?php echo isActive('rap/calendar', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'rap/calendar'; ?>">Calendar Of Activities</a></li>
                         </ul>
                     </li>
+                    <?php endif; ?>
 
-                     <li class="nav-item dropdown">
+                    <?php if (userHasCapability('MANAGE_SES_DATA')): ?>
+                    <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('ses', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="sesDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             SES
                         </a>
@@ -88,11 +106,14 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                             <li><a class="dropdown-item <?php echo isActive('ses/data', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'ses/data'; ?>">SES Data</a></li>
                         </ul>
                     </li>
+                    <?php endif; ?>
                 <?php endif; ?>
             </ul>
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                  <?php if (isLoggedIn()): ?>
-                    <?php if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin'): ?>
+                    <?php // Admin Dropdown - only show if user has ACCESS_ADMIN_PANEL capability
+                    if (userHasCapability('ACCESS_ADMIN_PANEL')): 
+                    ?>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('admin', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 Admin
@@ -103,17 +124,35 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                                                                     !strpos($currentPath, '/departments') && 
                                                                     !strpos($currentPath, '/siteSettings') && 
                                                                     !strpos($currentPath, '/roleAccessSettings') &&
-                                                                    !strpos($currentPath, '/listRoles') && // ADDED this check
+                                                                    !strpos($currentPath, '/listRoles') && 
                                                                     !strpos($currentPath, '/dtr') && 
                                                                     !strpos($currentPath, '/assets') ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/departments', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/departments'; ?>">Departments</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/listRoles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/listRoles'; ?>">Manage Roles</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/roleAccessSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/roleAccessSettings'; ?>">Role Permissions</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/siteSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/siteSettings'; ?>">Site Settings</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/dtr', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/dtr'; ?>">DTR</a></li>
-                                <li><a class="dropdown-item <?php echo isActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/assets'; ?>">Assets</a></li>
+                                
+                                <?php if (userHasCapability('MANAGE_USERS')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_DEPARTMENTS')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/departments', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/departments'; ?>">Departments</a></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_ROLES')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/listRoles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/listRoles'; ?>">Manage Roles</a></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_ROLES_PERMISSIONS')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/roleAccessSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/roleAccessSettings'; ?>">Role Permissions</a></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_SITE_SETTINGS')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/siteSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/siteSettings'; ?>">Site Settings</a></li>
+                                <?php endif; ?>
+                                
+                                <?php if (userHasCapability('MANAGE_DTR') || userHasCapability('MANAGE_ASSETS')): ?>
+                                    <li><hr class="dropdown-divider"></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_DTR')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/dtr', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/dtr'; ?>">DTR</a></li>
+                                <?php endif; ?>
+                                <?php if (userHasCapability('MANAGE_ASSETS')): ?>
+                                    <li><a class="dropdown-item <?php echo isActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/assets'; ?>">Assets</a></li>
+                                <?php endif; ?>
                             </ul>
                         </li>
                     <?php endif; ?>
