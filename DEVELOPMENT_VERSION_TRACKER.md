@@ -1,6 +1,57 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.2.0 - Administrator Module (YYYY-MM-DD)
+Date: 2025-05-30 (Please update with the actual date)
+
+Features Implemented:
+
+Admin Controller (AdminController.php):
+
+Created to handle admin-specific logic.
+
+Constructor includes access control:
+
+Checks if user is logged in.
+
+Checks if $_SESSION['user_id'] == 1 for admin privileges (initial implementation).
+
+Redirects non-admins with an error message.
+
+index() method for the main admin dashboard.
+
+users() method stub for future user management.
+
+view() helper method for loading admin views.
+
+Admin Views:
+
+Created app/views/admin/ directory.
+
+app/views/admin/index.php: Basic admin dashboard view with placeholder cards for common admin tasks.
+
+Navigation:
+
+Updated app/views/layouts/header.php to display an "Admin Panel" link in the navigation bar.
+
+Admin link is only visible if $_SESSION['user_id'] == 1.
+
+Added basic "active" state styling to navigation links.
+
+Key Changes & Fixes:
+
+Simplified admin role check to user_id == 1 for now.
+
+To-Do / Next Steps (Examples for Admin Module):
+
+Implement a proper role-based access control (RBAC) system (e.g., add user_role column to users table).
+
+Develop full CRUD functionality for user management in the admin panel.
+
+Implement content management features.
+
+Add site settings management.
+
 Version 0.1.0 - Initial Setup & Login System (YYYY-MM-DD)
 Date: 2025-05-30 (Please update with the actual date you started/completed these)
 

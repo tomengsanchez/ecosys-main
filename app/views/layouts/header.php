@@ -22,18 +22,26 @@ if (!defined('BASE_URL')) {
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav ms-auto">
                 <li class="nav-item">
-                    <a class="nav-link" href="<?php echo BASE_URL; ?>">Home</a>
+                    <a class="nav-link <?php echo (parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) == rtrim(BASE_URL, '/')) ? 'active' : ''; ?>" href="<?php echo BASE_URL; ?>">Home</a>
                 </li>
                 <?php if (isLoggedIn()): ?>
                     <li class="nav-item">
-                        <a class="nav-link" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
+                        <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'dashboard') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
                     </li>
+                    <?php 
+                    // Check if the logged-in user is an admin (user_id == 1 for now)
+                    if (isset($_SESSION['user_id']) && $_SESSION['user_id'] == 1): 
+                    ?>
+                        <li class="nav-item">
+                            <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'admin') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Panel</a>
+                        </li>
+                    <?php endif; ?>
                     <li class="nav-item">
                         <a class="nav-link" href="<?php echo BASE_URL . 'auth/logout'; ?>">Logout (<?php echo htmlspecialchars($_SESSION['display_name'] ?? ''); ?>)</a>
                     </li>
                 <?php else: ?>
                     <li class="nav-item">
-                        <a class="nav-link" href="<?php echo BASE_URL . 'auth/login'; ?>">Login</a>
+                        <a class="nav-link <?php echo (strpos(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), BASE_URL . 'auth/login') === 0) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'auth/login'; ?>">Login</a>
                     </li>
                 <?php endif; ?>
             </ul>
