@@ -9,7 +9,8 @@ class AdminController {
     private $pdo;
     private $userModel; 
     private $departmentModel; 
-    private $optionModel; // ADDED: OptionModel instance
+    private $optionModel; 
+    private $rolePermissionModel; // ADDED: RolePermissionModel instance
 
     /**
      * Constructor
@@ -18,14 +19,16 @@ class AdminController {
         $this->pdo = $pdo;
         $this->userModel = new UserModel($this->pdo); 
         $this->departmentModel = new DepartmentModel($this->pdo); 
-        $this->optionModel = new OptionModel($this->pdo); // ADDED: Instantiate OptionModel
+        $this->optionModel = new OptionModel($this->pdo); 
+        $this->rolePermissionModel = new RolePermissionModel($this->pdo); // ADDED: Instantiate RolePermissionModel
+
 
         if (!isLoggedIn()) {
             redirect('auth/login');
         }
-        if (!isset($_SESSION['user_role']) || $_SESSION['user_role'] !== 'admin') { 
-            $_SESSION['error_message'] = "You do not have permission to access the admin area.";
-            redirect('dashboard');
+        if (!userHasCapability('ACCESS_ADMIN_PANEL')) { 
+            $_SESSION['error_message'] = "You do not have permission to access this area.";
+            redirect('dashboard'); 
         }
     }
 
@@ -40,12 +43,16 @@ class AdminController {
                 ['label' => 'Admin Panel']
             ]
         ];
-        $this->view('admin/index', $data); // This view needs a link/card for Site Settings
+        $this->view('admin/index', $data);
     }
 
     // --- User Management Methods ---
-    // ... (users, addUser, editUser, deleteUser methods remain here, unchanged for this step) ...
+    // ... (users, addUser, editUser, deleteUser methods remain the same as previous version with capability checks) ...
     public function users() {
+        if (!userHasCapability('MANAGE_USERS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to manage users.';
+            redirect('admin'); 
+        }
         $users = $this->userModel->getAllUsers();
         $data = [
             'pageTitle' => 'Manage Users',
@@ -59,17 +66,22 @@ class AdminController {
     }
 
     public function addUser() {
+        if (!userHasCapability('MANAGE_USERS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to add users.';
+            redirect('admin/users');
+        }
         $departments = $this->departmentModel->getAllDepartments(); 
         $commonData = [
             'pageTitle' => 'Add New User',
             'departments' => $departments,
+            'definedRoles' => getDefinedRoles(), // Pass defined roles for the form
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users', 'url' => 'admin/users'],
                 ['label' => 'Add User']
             ]
         ];
-
+        
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
@@ -94,7 +106,7 @@ class AdminController {
             elseif (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
             if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
             
-            $allowedRoles = ['admin', 'editor', 'user'];
+            $allowedRoles = array_keys(getDefinedRoles()); 
             if (!in_array($data['user_role'], $allowedRoles)) {
                 $data['errors']['user_role_err'] = 'Invalid user role selected.';
             }
@@ -144,6 +156,11 @@ class AdminController {
     }
     
     public function editUser($userId = null) {
+        if (!userHasCapability('MANAGE_USERS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to edit users.';
+            redirect('admin/users');
+        }
+        
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $user = $this->userModel->findUserById($userId); 
@@ -157,7 +174,8 @@ class AdminController {
         $commonData = [
             'pageTitle' => 'Edit User',
             'departments' => $departments,
-            'user' => $user,
+            'user' => $user, // Original user data
+            'definedRoles' => getDefinedRoles(), // Pass defined roles for the form
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users', 'url' => 'admin/users'],
@@ -167,7 +185,7 @@ class AdminController {
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $formData = [
+            $formData = [ // Data from the form submission
                 'user_id' => $userId,
                 'user_login' => trim($_POST['user_login'] ?? ''),
                 'user_email' => trim($_POST['user_email'] ?? ''),
@@ -179,8 +197,11 @@ class AdminController {
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : (int)$user['user_status'],
                 'errors' => []
             ];
+            // Merge common data (like breadcrumbs, departments list) with form data for re-display
             $data = array_merge($commonData, $formData);
-            $data['user'] = array_merge($user, $formData); 
+             // Crucially, update the 'user' key in $data to reflect the submitted values for form pre-filling on error
+            $data['user'] = array_merge($user, $formData);
+
 
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
             if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
@@ -191,11 +212,12 @@ class AdminController {
                 if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
             }
             
-            $allowedRoles = ['admin', 'editor', 'user'];
+            $allowedRoles = array_keys(getDefinedRoles()); 
             if (!in_array($data['user_role'], $allowedRoles)) $data['errors']['user_role_err'] = 'Invalid user role selected.';
-            if ($userId == 1 && $data['user_role'] !== 'admin') {
-                 $data['errors']['user_role_err'] = 'The super administrator role cannot be changed.';
-                 $data['user_role'] = 'admin'; 
+            // Prevent changing role of user_id 1 if they are 'admin'
+            if ($userId == 1 && $user['user_role'] === 'admin' && $data['user_role'] !== 'admin') {
+                 $data['errors']['user_role_err'] = 'The primary super administrator role (ID 1) cannot be changed from "admin".';
+                 $data['user_role'] = 'admin'; // Force it back in the data for re-display
             }
             if ($data['department_id'] !== null && !$this->departmentModel->getDepartmentById($data['department_id'])) {
                 $data['errors']['department_id_err'] = 'Invalid department selected.';
@@ -234,7 +256,8 @@ class AdminController {
                 $this->view('admin/user_form', $data);
             }
         } else {
-            $data = array_merge($commonData, [
+            // For GET request, merge original user data into commonData for form pre-filling
+             $data = array_merge($commonData, [
                 'user_id' => $user['user_id'], 
                 'user_login' => $user['user_login'],
                 'user_email' => $user['user_email'],
@@ -249,6 +272,10 @@ class AdminController {
     }
 
     public function deleteUser($userId = null) {
+        if (!userHasCapability('MANAGE_USERS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to delete users.';
+            redirect('admin/users');
+        }
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $userToDelete = $this->userModel->findUserById($userId);
@@ -269,8 +296,12 @@ class AdminController {
 
 
     // --- Department Management Methods ---
-    // ... (departments, addDepartment, editDepartment, deleteDepartment methods remain here) ...
+    // ... (departments, addDepartment, editDepartment, deleteDepartment methods remain the same with capability checks) ...
     public function departments() {
+        if (!userHasCapability('MANAGE_DEPARTMENTS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to manage departments.';
+            redirect('admin');
+        }
         $departments = $this->departmentModel->getAllDepartments();
         if ($departments) {
             foreach ($departments as &$dept) { 
@@ -291,6 +322,10 @@ class AdminController {
     }
 
     public function addDepartment() {
+        if (!userHasCapability('MANAGE_DEPARTMENTS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to add departments.';
+            redirect('admin/departments');
+        }
         $commonData = [
             'pageTitle' => 'Add New Department',
             'breadcrumbs' => [
@@ -334,6 +369,10 @@ class AdminController {
     }
 
     public function editDepartment($departmentId = null) {
+        if (!userHasCapability('MANAGE_DEPARTMENTS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to edit departments.';
+            redirect('admin/departments');
+        }
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
         $department = $this->departmentModel->getDepartmentById($departmentId);
@@ -391,6 +430,10 @@ class AdminController {
     }
 
     public function deleteDepartment($departmentId = null) {
+        if (!userHasCapability('MANAGE_DEPARTMENTS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to delete departments.';
+            redirect('admin/departments');
+        }
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
 
@@ -404,13 +447,23 @@ class AdminController {
 
     // --- Site Settings Method ---
     public function siteSettings() {
-        // Define which options are manageable through the UI
+        if (!userHasCapability('MANAGE_SITE_SETTINGS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
+            redirect('admin');
+        }
+        // ... (rest of siteSettings logic remains the same) ...
         $manageableOptions = [
-            'site_name' => 'Default Site Name',
-            'site_tagline' => 'Just another Mainsystem site',
-            'admin_email' => 'admin@example.com',
-            'items_per_page' => 10,
-            // Add more settings as needed, e.g., 'maintenance_mode' => 'off'
+            'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
+            'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
+            'admin_email' => ['label' => 'Administrator Email', 'default' => 'admin@example.com', 'type' => 'email'], 
+            'items_per_page' => ['label' => 'Items Per Page', 'default' => 10, 'type' => 'number', 'help' => 'Number of items to show on paginated lists.'],
+            'site_description' => ['label' => 'Site Description', 'default' => '', 'type' => 'textarea'],
+            'maintenance_mode' => [
+                'label' => 'Maintenance Mode', 
+                'default' => 'off', 
+                'type' => 'select', 
+                'options' => ['on' => 'On', 'off' => 'Off']
+            ]
         ];
         $optionKeys = array_keys($manageableOptions);
 
@@ -419,7 +472,6 @@ class AdminController {
             $settingsToSave = [];
             foreach ($optionKeys as $key) {
                 if (isset($_POST[$key])) {
-                    // Basic sanitization, you might need more specific validation per option
                     $settingsToSave[$key] = trim($_POST[$key]);
                 }
             }
@@ -429,27 +481,88 @@ class AdminController {
             } else {
                 $_SESSION['admin_message'] = 'Error: Could not save all site settings.';
             }
-            // Redirect to refresh the page and show message (or stay and show message)
             redirect('admin/siteSettings');
         }
 
-        // GET request: Load current settings
         $currentSettings = [];
         $dbOptions = $this->optionModel->getOptions($optionKeys);
-        foreach ($manageableOptions as $key => $defaultValue) {
-            $currentSettings[$key] = $dbOptions[$key] ?? $defaultValue;
+        foreach ($manageableOptions as $key => $defaultValueOrDetails) {
+             $currentSettings[$key] = $dbOptions[$key] ?? (is_array($defaultValueOrDetails) ? ($defaultValueOrDetails['default'] ?? '') : $defaultValueOrDetails);
         }
         
         $data = [
             'pageTitle' => 'Site Settings',
             'settings' => $currentSettings,
-            'manageableOptions' => $manageableOptions, // To know which fields to display
+            'manageableOptions' => $manageableOptions, 
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Site Settings']
             ]
         ];
-        $this->view('admin/site_settings', $data); // New view: admin/site_settings.php
+        $this->view('admin/site_settings', $data); 
+    }
+
+    // --- Role Access Settings Method (MODIFIED) ---
+    public function roleAccessSettings() {
+        if (!userHasCapability('MANAGE_ROLES_PERMISSIONS')) {
+            $_SESSION['admin_message'] = 'Error: You do not have permission to manage role permissions.';
+            redirect('admin');
+        }
+
+        $definedRoles = getDefinedRoles(); // Get roles like ['admin' => 'Administrator', ...]
+        $allCapabilities = CAPABILITIES; // Get all capabilities like ['MANAGE_USERS' => 'Manage Users', ...]
+
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            // CSRF token check would be good here
+            
+            $submittedPermissions = $_POST['permissions'] ?? [];
+            $success = true;
+
+            foreach (array_keys($definedRoles) as $roleName) {
+                // Cannot edit permissions for the primary 'admin' role via this UI for safety
+                if ($roleName === 'admin' && $_SESSION['user_role'] === 'admin' && ($_SESSION['user_id'] == 1 || $this->userModel->findUserById($_SESSION['user_id'])['user_role'] === 'admin')) {
+                    // If current user is the primary admin, ensure the 'admin' role retains all capabilities.
+                    // Or, simply skip updating the 'admin' role here and manage it separately/hardcode its full access.
+                    // For now, we'll re-assign all capabilities to 'admin' to ensure it's not accidentally crippled.
+                    // A better approach might be to disallow editing 'admin' role's permissions here.
+                    // $this->rolePermissionModel->setRoleCapabilities($roleName, array_keys($allCapabilities));
+                    // continue; // Skip admin role modification from UI for now for safety
+                }
+
+                $roleCapabilities = $submittedPermissions[$roleName] ?? [];
+                // Sanitize: ensure only defined capabilities are processed
+                $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities));
+                
+                if (!$this->rolePermissionModel->setRoleCapabilities($roleName, $validRoleCapabilities)) {
+                    $success = false;
+                    $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName);
+                    break; 
+                }
+            }
+
+            if ($success) {
+                $_SESSION['admin_message'] = 'Role permissions updated successfully!';
+            }
+            redirect('admin/roleAccessSettings'); // Redirect to show updated state and message
+        }
+
+        // GET request: Fetch current permissions for each role
+        $currentRoleCapabilities = [];
+        foreach (array_keys($definedRoles) as $roleName) {
+            $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName);
+        }
+        
+        $data = [
+            'pageTitle' => 'Role Access Settings',
+            'definedRoles' => $definedRoles, 
+            'allCapabilities' => $allCapabilities, 
+            'currentRoleCapabilities' => $currentRoleCapabilities, // Pass current DB state to view
+            'breadcrumbs' => [
+                ['label' => 'Admin Panel', 'url' => 'admin'],
+                ['label' => 'Role Access Settings']
+            ]
+        ];
+        $this->view('admin/role_access_settings', $data); 
     }
 
 

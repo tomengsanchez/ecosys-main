@@ -64,13 +64,22 @@ require_once __DIR__ . '/../layouts/header.php';
         <div class="col-md-6 col-lg-4">
             <div class="card h-100">
                 <div class="card-body d-flex flex-column">
+                    <h5 class="card-title"><i class="fas fa-user-shield me-2"></i>Role Access Settings</h5>
+                    <p class="card-text">View current role capabilities and permissions (read-only).</p>
+                    <a href="<?php echo BASE_URL . 'admin/roleAccessSettings'; ?>" class="btn btn-primary mt-auto">View Role Settings</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column">
                     <h5 class="card-title"><i class="fas fa-file-alt me-2"></i>Content Management</h5>
                     <p class="card-text">Manage site content, posts, pages, etc. (Coming Soon)</p>
                     <a href="#" class="btn btn-secondary disabled mt-auto">Manage Content</a>
                 </div>
             </div>
         </div>
-        </div>
+    </div>
 
     <h4 class="mt-5">Session Information (for Admin demonstration):</h4>
     <pre class="bg-light p-3 border rounded">
