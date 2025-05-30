@@ -85,8 +85,10 @@ define('CAPABILITIES', [
     'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations',
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',
     'MANAGE_RAP_CALENDAR' => 'Manage Rap Calendar',
-    'MANAGE_SES_DATA' => 'Manage SES Data'
-    // Add more capabilities as your application grows
+    'MANAGE_SES_DATA' => 'Manage SES Data',
+    'MANAGE_DTR' => 'Manage DTR Records',
+    'MANAGE_ASSETS' => 'Manage Assets',
+
 ]);
 
 // REMOVED: define('DEFINED_ROLES', [...]); // Roles are now fetched from the database.
