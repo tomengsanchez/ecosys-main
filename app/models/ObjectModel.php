@@ -105,7 +105,6 @@ class ObjectModel {
             $sql = "SELECT * FROM objects WHERE object_type = :object_type";
             $params = [':object_type' => $objectType];
 
-            // Order by
             $orderBy = $args['orderby'] ?? 'object_date';
             $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
             if (!in_array($orderBy, ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified'])) {
@@ -116,7 +115,6 @@ class ObjectModel {
             }
             $sql .= " ORDER BY {$orderBy} {$orderDir}";
 
-            // Limit and Offset for pagination
             if (isset($args['limit']) && is_numeric($args['limit'])) {
                 $sql .= " LIMIT " . (int)$args['limit'];
                 if (isset($args['offset']) && is_numeric($args['offset'])) {
@@ -140,14 +138,6 @@ class ObjectModel {
         }
     }
     
-    /**
-     * Get objects based on type and other conditions.
-     *
-     * @param string $objectType The type of objects to retrieve.
-     * @param array $conditions Associative array of conditions (e.g., ['object_status' => 'pending'] or ['object_status' => ['pending', 'approved']]).
-     * @param array $args Optional arguments like 'orderby', 'orderdir', 'include_meta'.
-     * @return array|false An array of object arrays, or false on failure.
-     */
     public function getObjectsByConditions($objectType, array $conditions = [], array $args = []) {
         try {
             $sql = "SELECT * FROM objects WHERE object_type = :object_type";
@@ -155,7 +145,7 @@ class ObjectModel {
             $whereClauses = [];
 
             foreach ($conditions as $field => $value) {
-                if (is_array($value)) { // Handle IN clause for multiple values (e.g., status in ('pending', 'approved'))
+                if (is_array($value)) { 
                     $placeholders = [];
                     foreach ($value as $idx => $val) {
                         $paramName = ":{$field}_{$idx}";
@@ -163,7 +153,7 @@ class ObjectModel {
                         $params[$paramName] = $val;
                     }
                     $whereClauses[] = "{$field} IN (" . implode(',', $placeholders) . ")";
-                } else { // Handle single value equality
+                } else { 
                     $paramName = ":{$field}";
                     $whereClauses[] = "{$field} = {$paramName}";
                     $params[$paramName] = $value;
@@ -174,10 +164,9 @@ class ObjectModel {
                 $sql .= " AND " . implode(" AND ", $whereClauses);
             }
 
-            // Order by
             $orderBy = $args['orderby'] ?? 'object_date';
             $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
-            $allowedOrderBy = ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified', 'object_status']; // Add more if needed
+            $allowedOrderBy = ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified', 'object_status']; 
             if (!in_array($orderBy, $allowedOrderBy)) {
                 $orderBy = 'object_date';
             }
@@ -186,7 +175,6 @@ class ObjectModel {
             }
             $sql .= " ORDER BY {$orderBy} {$orderDir}";
 
-            // Limit and Offset for pagination
             if (isset($args['limit']) && is_numeric($args['limit'])) {
                 $sql .= " LIMIT " . (int)$args['limit'];
                 if (isset($args['offset']) && is_numeric($args['offset'])) {
@@ -211,13 +199,66 @@ class ObjectModel {
         }
     }
 
+    /**
+     * Get conflicting reservations for a given room and time slot.
+     * Assumes reservation start/end datetimes are stored in objectmeta
+     * with keys 'reservation_start_datetime' and 'reservation_end_datetime'
+     * in a format comparable as strings (e.g., 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DDTHH:MM').
+     *
+     * @param int $roomId The ID of the room (object_parent for reservation).
+     * @param string $startTime The start datetime of the potential reservation.
+     * @param string $endTime The end datetime of the potential reservation.
+     * @param array $statuses Array of statuses to check against (e.g., ['approved']).
+     * @param int|null $excludeReservationId An optional reservation ID to exclude from the check (useful when updating an existing reservation).
+     * @return array|false An array of conflicting reservation objects (object_id only, or full objects), or false on error.
+     */
+    public function getConflictingReservations($roomId, $startTime, $endTime, $statuses = ['approved'], $excludeReservationId = null) {
+        try {
+            // Construct the IN clause for statuses
+            $statusPlaceholders = implode(',', array_fill(0, count($statuses), '?'));
+            
+            $sql = "SELECT o.object_id, o.object_title, o.object_status,
+                           oms.meta_value as reservation_start_datetime, 
+                           ome.meta_value as reservation_end_datetime
+                    FROM objects o
+                    JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
+                    JOIN objectmeta ome ON o.object_id = ome.object_id AND ome.meta_key = 'reservation_end_datetime'
+                    WHERE o.object_type = 'reservation'
+                      AND o.object_parent = ? 
+                      AND o.object_status IN ({$statusPlaceholders})
+                      AND oms.meta_value < ? 
+                      AND ome.meta_value > ? ";
+
+            $params = [$roomId];
+            foreach ($statuses as $status) {
+                $params[] = $status;
+            }
+            $params[] = $endTime;   // For oms.meta_value < :endTime
+            $params[] = $startTime; // For ome.meta_value > :startTime
+
+            if ($excludeReservationId !== null) {
+                $sql .= " AND o.object_id != ? ";
+                $params[] = $excludeReservationId;
+            }
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Further enhance with full meta if needed, or just return IDs/basic info
+            // For now, returning fetched columns is sufficient for conflict detection.
+            // If full object data is needed, it would require another loop and getObjectById.
+            return $conflicts;
+
+        } catch (PDOException $e) {
+            error_log("Error in ObjectModel::getConflictingReservations(): " . $e->getMessage());
+            return false;
+        }
+    }
+
 
     /**
      * Update an existing object's details and its metadata.
-     *
-     * @param int $objectId The ID of the object to update.
-     * @param array $data Associative array of data to update. Can include 'meta_fields'.
-     * @return bool True on success, false on failure.
      */
     public function updateObject($objectId, array $data) {
         $allowedFields = ['object_title', 'object_content', 'object_excerpt', 'object_status', 'object_name', 'object_parent', 'menu_order'];
@@ -235,11 +276,10 @@ class ObjectModel {
             }
         }
         
-        if (!empty($sqlParts) || isset($data['meta_fields'])) { // Only update modified time if there's something to change in main table or meta
+        if (!empty($sqlParts) || isset($data['meta_fields'])) { 
             $sqlParts[] = "object_modified = NOW()";
             $sqlParts[] = "object_modified_gmt = NOW()";
         }
-
 
         if (empty($sqlParts) && empty($data['meta_fields'])) {
              error_log("ObjectModel::updateObject: No fields to update for object ID {$objectId}.");
@@ -269,9 +309,6 @@ class ObjectModel {
 
     /**
      * Delete an object and all its associated metadata.
-     *
-     * @param int $objectId The ID of the object to delete.
-     * @return bool True on success, false on failure.
      */
     public function deleteObject($objectId) {
         try {
@@ -296,11 +333,6 @@ class ObjectModel {
 
     /**
      * Add or update a piece of metadata for an object.
-     *
-     * @param int $objectId The object ID.
-     * @param string $metaKey The meta key.
-     * @param mixed $metaValue The meta value.
-     * @return bool True on success, false on failure.
      */
     public function addOrUpdateObjectMeta($objectId, $metaKey, $metaValue) {
         try {
@@ -326,10 +358,6 @@ class ObjectModel {
 
     /**
      * Get a specific piece of metadata for an object.
-     *
-     * @param int $objectId The object ID.
-     * @param string $metaKey The meta key.
-     * @return mixed|null The meta value, or null if not found or on error.
      */
     public function getObjectMeta($objectId, $metaKey) {
         try {
@@ -346,9 +374,6 @@ class ObjectModel {
 
     /**
      * Get all metadata for a specific object.
-     *
-     * @param int $objectId The object ID.
-     * @return array An associative array of meta_key => meta_value.
      */
     public function getAllObjectMeta($objectId) {
         $metaArray = [];
@@ -368,10 +393,6 @@ class ObjectModel {
 
     /**
      * Delete a specific piece of metadata for an object.
-     *
-     * @param int $objectId The object ID.
-     * @param string $metaKey The meta key to delete.
-     * @return bool True on success, false on failure.
      */
     public function deleteObjectMeta($objectId, $metaKey) {
         try {
@@ -386,9 +407,6 @@ class ObjectModel {
     
     /**
      * Generate a URL-friendly slug from a string.
-     *
-     * @param string $text The text to slugify.
-     * @return string The slug.
      */
     private function generateSlug($text) {
         $text = str_replace("'", "", $text);

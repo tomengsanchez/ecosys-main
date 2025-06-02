@@ -8,7 +8,7 @@
 class OpenOfficeController {
     private $pdo;
     private $objectModel;
-    private $userModel; // Added for fetching user details for reservations
+    private $userModel; 
 
     /**
      * Constructor
@@ -18,7 +18,7 @@ class OpenOfficeController {
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
         $this->objectModel = new ObjectModel($this->pdo);
-        $this->userModel = new UserModel($this->pdo); // Instantiate UserModel
+        $this->userModel = new UserModel($this->pdo); 
 
         if (!isLoggedIn()) {
             redirect('auth/login');
@@ -40,7 +40,7 @@ class OpenOfficeController {
             'pageTitle' => 'Manage Rooms',
             'rooms' => $rooms,
             'breadcrumbs' => [
-                ['label' => 'Open Office', 'url' => 'openoffice/rooms'], // Link to itself or a future Open Office dashboard
+                ['label' => 'Open Office', 'url' => 'openoffice/rooms'], 
                 ['label' => 'Manage Rooms']
             ]
         ];
@@ -63,15 +63,15 @@ class OpenOfficeController {
                 ['label' => 'Manage Rooms', 'url' => 'openoffice/rooms'],
                 ['label' => 'Add Room']
             ],
-            'room_statuses' => ['available' => 'Available', 'unavailable' => 'Unavailable', 'maintenance' => 'Maintenance'] // Operational status of the room itself
+            'room_statuses' => ['available' => 'Available', 'unavailable' => 'Unavailable', 'maintenance' => 'Maintenance'] 
         ];
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
-                'object_title' => trim($_POST['object_title'] ?? ''), // Room Name
-                'object_content' => trim($_POST['object_content'] ?? ''), // Description
-                'object_status' => trim($_POST['object_status'] ?? 'available'), // Room operational status
+                'object_title' => trim($_POST['object_title'] ?? ''), 
+                'object_content' => trim($_POST['object_content'] ?? ''), 
+                'object_status' => trim($_POST['object_status'] ?? 'available'), 
                 'meta_fields' => [
                     'room_capacity' => filter_var(trim($_POST['room_capacity'] ?? '0'), FILTER_VALIDATE_INT),
                     'room_location' => trim($_POST['room_location'] ?? ''),
@@ -92,7 +92,7 @@ class OpenOfficeController {
 
             if (empty($data['errors'])) {
                 $objectData = [
-                    'object_author' => $_SESSION['user_id'], // Admin creating the room
+                    'object_author' => $_SESSION['user_id'], 
                     'object_title' => $data['object_title'],
                     'object_type' => 'room',
                     'object_content' => $data['object_content'],
@@ -124,7 +124,6 @@ class OpenOfficeController {
 
     /**
      * Display form to edit an existing room OR process updating an existing room. (U in CRUD for Rooms)
-     * @param int $roomId The ID of the room (object_id) to edit.
      */
     public function editRoom($roomId = null) {
         if (!userHasCapability('MANAGE_ROOMS')) {
@@ -144,7 +143,7 @@ class OpenOfficeController {
         $commonData = [
             'pageTitle' => 'Edit Room',
             'room_id' => $roomId, 
-            'original_room_data' => $room, // Pass original data for the form
+            'original_room_data' => $room, 
             'breadcrumbs' => [
                 ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
                 ['label' => 'Manage Rooms', 'url' => 'openoffice/rooms'],
@@ -214,7 +213,6 @@ class OpenOfficeController {
 
     /**
      * Delete a room. (D in CRUD for Rooms)
-     * @param int $roomId The ID of the room (object_id) to delete.
      */
     public function deleteRoom($roomId = null) {
         if (!userHasCapability('MANAGE_ROOMS')) {
@@ -230,9 +228,14 @@ class OpenOfficeController {
             redirect('openoffice/rooms');
         }
 
-        // Before deleting a room, consider if there are reservations.
-        // For simplicity, this example doesn't check, but a real system should.
-        // You might want to prevent deletion if active reservations exist, or cascade delete/notify.
+        // Check for existing reservations for this room before deleting
+        $existingReservations = $this->objectModel->getObjectsByConditions('reservation', ['object_parent' => $roomId]);
+        if (!empty($existingReservations)) {
+            $_SESSION['admin_message'] = 'Error: Cannot delete room "' . htmlspecialchars($room['object_title']) . '". It has existing reservations. Please manage or delete them first.';
+            redirect('openoffice/rooms');
+            return;
+        }
+
 
         if ($this->objectModel->deleteObject($roomId)) {
             $_SESSION['admin_message'] = 'Room "' . htmlspecialchars($room['object_title']) . '" deleted successfully.';
@@ -254,28 +257,27 @@ class OpenOfficeController {
         }
 
         $reservations = $this->objectModel->getObjectsByType('reservation', [
-            'orderby' => 'object_date', // Order by when reservation was made
+            'orderby' => 'object_date', 
             'orderdir' => 'DESC',
             'include_meta' => true
         ]);
 
-        // Enhance reservations with room name and user name
         if ($reservations) {
             foreach ($reservations as &$res) {
-                if (!empty($res['object_parent'])) { // object_parent is room_id
+                if (!empty($res['object_parent'])) { 
                     $room = $this->objectModel->getObjectById($res['object_parent']);
                     $res['room_name'] = $room ? $room['object_title'] : 'Unknown Room';
                 } else {
                     $res['room_name'] = 'N/A';
                 }
-                if (!empty($res['object_author'])) { // object_author is user_id
+                if (!empty($res['object_author'])) { 
                     $user = $this->userModel->findUserById($res['object_author']);
                     $res['user_display_name'] = $user ? $user['display_name'] : 'Unknown User';
                 } else {
                     $res['user_display_name'] = 'N/A';
                 }
             }
-            unset($res); // Unset reference
+            unset($res); 
         }
         
         $data = [
@@ -287,15 +289,13 @@ class OpenOfficeController {
             ],
             'reservation_statuses' => ['pending' => 'Pending', 'approved' => 'Approved', 'denied' => 'Denied', 'cancelled' => 'Cancelled']
         ];
-        $this->view('openoffice/reservations_list', $data); // New view
+        $this->view('openoffice/reservations_list', $data); 
     }
 
     /**
      * Display form to create a new reservation for a specific room OR process the creation.
-     * @param int $roomId The ID of the room to reserve.
      */
     public function createreservation($roomId = null) {
-        // Any logged-in user can attempt to create a reservation
         if ($roomId === null) {
             $_SESSION['error_message'] = 'No room selected for reservation.';
             redirect('openoffice/rooms');
@@ -328,39 +328,54 @@ class OpenOfficeController {
             ];
             $data = array_merge($commonData, $formData);
 
-            // Basic Validation
             if (empty($data['reservation_start_datetime'])) $data['errors']['start_err'] = 'Start date and time are required.';
             if (empty($data['reservation_end_datetime'])) $data['errors']['end_err'] = 'End date and time are required.';
             if (empty($data['reservation_purpose'])) $data['errors']['purpose_err'] = 'Purpose of reservation is required.';
 
+            $startDateTime = null;
+            $endDateTime = null;
+
             if (!empty($data['reservation_start_datetime']) && !empty($data['reservation_end_datetime'])) {
-                $start = new DateTime($data['reservation_start_datetime']);
-                $end = new DateTime($data['reservation_end_datetime']);
-                if ($start >= $end) {
-                    $data['errors']['end_err'] = 'End time must be after start time.';
+                try {
+                    $startDateTime = new DateTime($data['reservation_start_datetime']);
+                    $endDateTime = new DateTime($data['reservation_end_datetime']);
+
+                    if ($startDateTime >= $endDateTime) {
+                        $data['errors']['end_err'] = 'End time must be after start time.';
+                    }
+                    if ($startDateTime < new DateTime()) {
+                         $data['errors']['start_err'] = 'Reservation cannot be in the past.';
+                    }
+                } catch (Exception $e) {
+                    $data['errors']['start_err'] = 'Invalid date/time format.';
                 }
-                if ($start < new DateTime()) {
-                     $data['errors']['start_err'] = 'Reservation cannot be in the past.';
-                }
-                // TODO: Add conflict checking here - query existing 'approved' reservations for this room and time range.
-                // This is a complex part and would typically involve a separate method in ObjectModel.
-                // For now, we'll skip direct conflict checking in this iteration for brevity.
             }
             
+            // Conflict Check for 'approved' reservations
+            if (empty($data['errors']) && $startDateTime && $endDateTime) {
+                $conflicts = $this->objectModel->getConflictingReservations(
+                    $roomId, 
+                    $data['reservation_start_datetime'], 
+                    $data['reservation_end_datetime'],
+                    ['approved'] // Only check against already approved
+                );
+                if ($conflicts && count($conflicts) > 0) {
+                    $data['errors']['form_err'] = 'This time slot is already booked (approved reservation exists). Please choose a different time.';
+                }
+            }
 
             if (empty($data['errors'])) {
                 $reservationData = [
-                    'object_author' => $_SESSION['user_id'], // User making the reservation
+                    'object_author' => $_SESSION['user_id'], 
                     'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
                     'object_type' => 'reservation',
-                    'object_parent' => $roomId, // Link to the room
-                    'object_status' => 'pending', // Initial status
-                    'object_content' => $data['reservation_purpose'], // Use main content for purpose
+                    'object_parent' => $roomId, 
+                    'object_status' => 'pending', 
+                    'object_content' => $data['reservation_purpose'], 
                     'meta_fields' => [
                         'reservation_start_datetime' => $data['reservation_start_datetime'],
                         'reservation_end_datetime' => $data['reservation_end_datetime'],
-                        // 'reservation_room_id' => $roomId, // Redundant if using object_parent
-                        'reservation_user_id' => $_SESSION['user_id'] // Also store user ID in meta if needed
+                        'reservation_user_id' => $_SESSION['user_id'] 
                     ]
                 ];
 
@@ -368,7 +383,7 @@ class OpenOfficeController {
 
                 if ($reservationId) {
                     $_SESSION['message'] = 'Reservation request submitted successfully! It is now pending approval.';
-                    redirect('openoffice/myreservations'); // Redirect to user's own reservations
+                    redirect('openoffice/myreservations'); 
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not submit reservation request.';
                     $this->view('openoffice/reservation_form', $data);
@@ -377,14 +392,13 @@ class OpenOfficeController {
                 $this->view('openoffice/reservation_form', $data);
             }
         } else {
-            // Prepare empty form data for GET request
             $data = array_merge($commonData, [
                 'reservation_start_datetime' => '', 
                 'reservation_end_datetime' => '', 
                 'reservation_purpose' => '',
                 'errors' => []
             ]);
-            $this->view('openoffice/reservation_form', $data); // New view
+            $this->view('openoffice/reservation_form', $data); 
         }
     }
 
@@ -393,30 +407,23 @@ class OpenOfficeController {
      */
     public function myreservations() {
         $userId = $_SESSION['user_id'];
-        // We need a way to get objects by author and type
-        // For now, get all and filter, or modify ObjectModel to support getObjectsByAuthorAndType
-        $allReservations = $this->objectModel->getObjectsByType('reservation', [
-            'orderby' => 'meta.reservation_start_datetime', // This won't work directly with current ObjectModel
-                                                          // We'd need custom SQL or fetch all then sort.
-                                                          // Let's sort by creation date for now.
-            'orderby' => 'object_date',
+        
+        $myReservations = $this->objectModel->getObjectsByConditions('reservation', ['object_author' => $userId], [
+            'orderby' => 'object_date', // Consider ordering by start_datetime from meta if possible
             'orderdir' => 'DESC',
             'include_meta' => true
         ]);
         
-        $myReservations = [];
-        if ($allReservations) {
-            foreach ($allReservations as $res) {
-                if ($res['object_author'] == $userId) {
-                     if (!empty($res['object_parent'])) { // object_parent is room_id
-                        $room = $this->objectModel->getObjectById($res['object_parent']);
-                        $res['room_name'] = $room ? $room['object_title'] : 'Unknown Room';
-                    } else {
-                        $res['room_name'] = 'N/A';
-                    }
-                    $myReservations[] = $res;
+        if ($myReservations) {
+            foreach ($myReservations as &$res) {
+                 if (!empty($res['object_parent'])) { 
+                    $room = $this->objectModel->getObjectById($res['object_parent']);
+                    $res['room_name'] = $room ? $room['object_title'] : 'Unknown Room';
+                } else {
+                    $res['room_name'] = 'N/A';
                 }
             }
+            unset($res);
         }
 
         $data = [
@@ -428,12 +435,11 @@ class OpenOfficeController {
             ],
              'reservation_statuses' => ['pending' => 'Pending', 'approved' => 'Approved', 'denied' => 'Denied', 'cancelled' => 'Cancelled']
         ];
-        $this->view('openoffice/my_reservations_list', $data); // New view
+        $this->view('openoffice/my_reservations_list', $data); 
     }
 
     /**
      * Cancel a pending reservation (by the user who made it).
-     * @param int $reservationId
      */
     public function cancelreservation($reservationId = null) {
         if ($reservationId === null) {
@@ -462,32 +468,61 @@ class OpenOfficeController {
 
     /**
      * Approve a pending reservation (by admin).
-     * @param int $reservationId
      */
     public function approvereservation($reservationId = null) {
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to approve reservations.";
-            redirect('openoffice/roomreservations');
+            redirect('openoffice/roomreservations'); // Or dashboard
         }
         if ($reservationId === null) {
-            $_SESSION['admin_message'] = 'No reservation ID specified.';
+            $_SESSION['admin_message'] = 'No reservation ID specified for approval.';
             redirect('openoffice/roomreservations');
         }
         $reservationId = (int)$reservationId;
-        $reservation = $this->objectModel->getObjectById($reservationId);
+        $reservationToApprove = $this->objectModel->getObjectById($reservationId);
 
-        if (!$reservation || $reservation['object_type'] !== 'reservation') {
-            $_SESSION['admin_message'] = 'Reservation not found.';
-        } elseif ($reservation['object_status'] !== 'pending') {
-            $_SESSION['admin_message'] = 'Only pending reservations can be approved.';
+        if (!$reservationToApprove || $reservationToApprove['object_type'] !== 'reservation') {
+            $_SESSION['admin_message'] = 'Reservation not found for approval.';
+        } elseif ($reservationToApprove['object_status'] !== 'pending') {
+            $_SESSION['admin_message'] = 'Only pending reservations can be approved. This one is already ' . $reservationToApprove['object_status'] . '.';
         } else {
-            // TODO: Add conflict checking here before approving.
-            // If conflict, set status to 'denied' or provide a message.
-            if ($this->objectModel->updateObject($reservationId, ['object_status' => 'approved'])) {
-                $_SESSION['admin_message'] = 'Reservation approved successfully.';
-                // Optionally, send a notification to the user.
+            $roomId = $reservationToApprove['object_parent'];
+            $startTime = $reservationToApprove['meta']['reservation_start_datetime'];
+            $endTime = $reservationToApprove['meta']['reservation_end_datetime'];
+
+            // 1. Check for conflicts with already 'approved' reservations
+            $approvedConflicts = $this->objectModel->getConflictingReservations(
+                $roomId, $startTime, $endTime, ['approved'], $reservationId // Exclude current one if it were somehow approved
+            );
+
+            if ($approvedConflicts && count($approvedConflicts) > 0) {
+                $_SESSION['admin_message'] = 'Error: Cannot approve. This time slot conflicts with an existing approved reservation.';
             } else {
-                $_SESSION['admin_message'] = 'Could not approve reservation.';
+                // 2. Approve the current reservation
+                if ($this->objectModel->updateObject($reservationId, ['object_status' => 'approved'])) {
+                    $_SESSION['admin_message'] = 'Reservation approved successfully.';
+                    
+                    // 3. Find and deny overlapping 'pending' reservations for the same room
+                    $overlappingPending = $this->objectModel->getConflictingReservations(
+                        $roomId, $startTime, $endTime, ['pending'], $reservationId // Exclude the one just approved
+                    );
+
+                    if ($overlappingPending) {
+                        $deniedCount = 0;
+                        foreach ($overlappingPending as $pendingConflict) {
+                            if ($this->objectModel->updateObject($pendingConflict['object_id'], ['object_status' => 'denied'])) {
+                                $deniedCount++;
+                                // Optionally log or notify user of automatic denial
+                                error_log("Reservation ID {$pendingConflict['object_id']} automatically denied due to approval of {$reservationId}.");
+                            }
+                        }
+                        if ($deniedCount > 0) {
+                            $_SESSION['admin_message'] .= " {$deniedCount} overlapping pending reservation(s) automatically denied.";
+                        }
+                    }
+                } else {
+                    $_SESSION['admin_message'] = 'Could not approve reservation due to a system error.';
+                }
             }
         }
         redirect('openoffice/roomreservations');
@@ -495,28 +530,26 @@ class OpenOfficeController {
 
     /**
      * Deny a pending reservation (by admin).
-     * @param int $reservationId
      */
     public function denyreservation($reservationId = null) {
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to deny reservations.";
-            redirect('openoffice/roomreservations');
+            redirect('openoffice/roomreservations'); 
         }
          if ($reservationId === null) {
-            $_SESSION['admin_message'] = 'No reservation ID specified.';
+            $_SESSION['admin_message'] = 'No reservation ID specified for denial.';
             redirect('openoffice/roomreservations');
         }
         $reservationId = (int)$reservationId;
         $reservation = $this->objectModel->getObjectById($reservationId);
 
         if (!$reservation || $reservation['object_type'] !== 'reservation') {
-            $_SESSION['admin_message'] = 'Reservation not found.';
-        } elseif ($reservation['object_status'] !== 'pending') {
-            $_SESSION['admin_message'] = 'Only pending reservations can be denied.';
+            $_SESSION['admin_message'] = 'Reservation not found for denial.';
+        } elseif (!in_array($reservation['object_status'], ['pending', 'approved'])) { // Can deny pending or revoke approval
+            $_SESSION['admin_message'] = 'Only pending or approved reservations can be denied/revoked. This one is ' . $reservation['object_status'] . '.';
         } else {
             if ($this->objectModel->updateObject($reservationId, ['object_status' => 'denied'])) {
-                $_SESSION['admin_message'] = 'Reservation denied successfully.';
-                // Optionally, send a notification to the user.
+                $_SESSION['admin_message'] = 'Reservation ' . ($reservation['object_status'] === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
             } else {
                 $_SESSION['admin_message'] = 'Could not deny reservation.';
             }
@@ -539,4 +572,3 @@ class OpenOfficeController {
         }
     }
 }
-
