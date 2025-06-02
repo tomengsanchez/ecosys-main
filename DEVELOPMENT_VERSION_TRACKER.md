@@ -1,47 +1,57 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.20.0 - Granular Role Permissions for Room CRUD (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+Config.php Updates:
+Defined new, more specific capability constants for room entity management within the CAPABILITIES array:
+VIEW_ROOMS: To view the list of rooms.
+CREATE_ROOMS: To add new rooms.
+EDIT_ROOMS: To edit existing rooms.
+DELETE_ROOMS: To delete rooms.
+The existing MANAGE_ROOMS capability is retained, potentially as a legacy/super capability.
+The userHasCapability() function was slightly adjusted to allow users with MANAGE_ROOMS to implicitly have all granular room permissions, facilitating a smoother transition.
+
+OpenOfficeController.php Modifications:
+Updated the room CRUD methods to use the new granular capabilities for access control:
+rooms(): Now protected by VIEW_ROOMS.
+addRoom(): Now protected by CREATE_ROOMS.
+editRoom(): Now protected by EDIT_ROOMS.
+deleteRoom(): Now protected by DELETE_ROOMS.
+Reservation-related methods continue to use their own specific granular permissions.
+
+Database Seeding (Conceptual):
+Noted the requirement to update the role_permissions table in the database to assign these new room CRUD capabilities to appropriate roles (e.g., 'admin', 'office_manager'). Example SQL INSERT statements were provided for guidance.
+
+Key Changes & Fixes:
+Implemented a more detailed and flexible permission system for managing room entities.
+Allows for finer control over which roles can view, create, edit, or delete rooms.
+The MANAGE_ROOMS capability can still be used as an overarching permission for full room control if desired, while specific actions are checked against the new granular capabilities.
+
+To-Do / Next Steps:
+Update the admin UI for role permission management (role_access_settings.php) to include these new room CRUD capabilities so they can be assigned to roles dynamically.
+Adjust UI elements in the room management views (e.g., show/hide "Add New Room", "Edit", "Delete" buttons) based on these new granular permissions for a more refined user experience. (Partial implementation already exists in rooms_list.php for Add/Edit/Delete based on MANAGE_ROOMS, this would be refined).
+
 Version 0.19.0 - Granular Role Permissions for Room Reservations (2025-06-02)
 Date: 2025-06-02
 
 Features Implemented:
 
 Config.php Updates:
-Defined new, more specific capability constants for room reservation management within the CAPABILITIES array:
-CREATE_ROOM_RESERVATIONS: To create own reservation requests.
-EDIT_OWN_ROOM_RESERVATIONS: (Future Use) To edit own pending reservations.
-CANCEL_OWN_ROOM_RESERVATIONS: To cancel own pending reservations.
-VIEW_ALL_ROOM_RESERVATIONS: To view all room reservations (admin/manager).
-APPROVE_DENY_ROOM_RESERVATIONS: To approve/deny pending reservations (admin/manager).
-EDIT_ANY_ROOM_RESERVATION: (Future Use) To edit any reservation (super admin).
-DELETE_ANY_ROOM_RESERVATION: (Future Use) To delete any reservation record (super admin).
-The previously broader MANAGE_OPEN_OFFICE_RESERVATIONS capability was commented out as it's superseded by these more granular ones for room bookings.
+Defined new, more specific capability constants for room reservation management.
 
 OpenOfficeController.php Modifications:
-Updated existing room reservation methods to use the new granular capabilities for access control:
-roomreservations(): Now protected by VIEW_ALL_ROOM_RESERVATIONS.
-createreservation(): Now protected by CREATE_ROOM_RESERVATIONS.
-cancelreservation(): Now protected by CANCEL_OWN_ROOM_RESERVATIONS.
-approvereservation(): Now protected by APPROVE_DENY_ROOM_RESERVATIONS.
-denyreservation(): Now protected by APPROVE_DENY_ROOM_RESERVATIONS.
-Added placeholder methods for future functionalities, each protected by its new specific capability:
-editMyReservation($reservationId): Protected by EDIT_OWN_ROOM_RESERVATIONS.
-editAnyReservation($reservationId): Protected by EDIT_ANY_ROOM_RESERVATION.
-deleteAnyReservation($reservationId): Protected by DELETE_ANY_ROOM_RESERVATION.
-Room entity management methods (rooms, addRoom, editRoom, deleteRoom) remain protected by MANAGE_ROOMS.
+Updated existing room reservation methods to use the new granular capabilities for access control.
+Added placeholder methods for future edit/delete reservation functionalities, protected by their new specific capabilities.
 
 Database Seeding (Conceptual):
-Noted the requirement to update the role_permissions table in the database to assign these new capabilities to appropriate roles (e.g., 'admin', 'user'). Example SQL INSERT statements were provided for guidance.
+Noted the requirement to update the role_permissions table to assign new reservation capabilities.
 
 Key Changes & Fixes:
-Implemented a more detailed and flexible permission system for room reservations.
-Allows for finer control over which roles can perform specific actions related to bookings.
-Prepared the groundwork for future edit/delete functionalities for reservations by defining and protecting their respective capabilities.
-
-To-Do / Next Steps:
-Implement the actual logic for editMyReservation, editAnyReservation, and deleteAnyReservation.
-Update the admin UI for role permission management (role_access_settings.php) to include these new capabilities so they can be assigned to roles dynamically.
-Adjust UI elements (e.g., show/hide buttons) based on these new granular permissions.
+Implemented a more detailed permission system for room reservations. Prepared for future edit/delete functionalities.
 
 Version 0.18.0 - Dynamic Time Slot Filtering in Reservation Form (2025-06-02)
 Date: 2025-06-02
@@ -49,24 +59,13 @@ Date: 2025-06-02
 Features Implemented:
 
 OpenOfficeController.php (createreservation() method - GET request part):
-Modified to fetch all 'approved' reservations for the specific room being booked.
-Extracted and passed an array of these approved time ranges (start and end datetimes) to the view as a JSON string (approved_reservations_json). This data is used by client-side JavaScript.
+Passed JSON encoded approved reservation times for the specific room to the view.
 
 Reservation Form View (app/views/openoffice/reservation_form.php):
-Added JavaScript logic to dynamically update the time slot dropdown based on the selected date and pre-existing approved reservations.
-On page load and when the date input changes:
-The script parses the approved_reservations_json data.
-It filters approved reservations relevant to the selected date.
-It iterates through the base 1-hour time slots.
-For each slot, it constructs the full start and end datetime.
-It checks if the slot is in the past or if it conflicts with any approved reservations for that day.
-Conflicting or past time slots are disabled in the dropdown, and their display text is updated (e.g., "9:00 AM - 10:00 AM (Booked)" or "(Past)").
-Available slots remain enabled.
-The script attempts to preserve the user's previous time slot selection if it remains valid after the date change.
+Added JavaScript to dynamically update the time slot dropdown, disabling/marking slots that are already approved or are in the past for the selected date.
 
 Key Changes & Fixes:
-Significantly improved user experience by preventing users from selecting time slots that are already booked (approved) or are in the past for a given room and date.
-Provided real-time feedback in the UI about slot availability.
+Improved UX by preventing selection of unavailable time slots.
 
 Version 0.17.0 - Email Notifications for Room Reservations (2025-06-02)
 Date: 2025-06-02
@@ -77,10 +76,10 @@ Config.php Enhancements:
 Added email configuration constants and send_system_email() helper function.
 
 Admin Site Settings (AdminController.php & site_settings.php view):
-Added manageable options for email configuration (enable/disable, from address, admin recipient).
+Added manageable options for email configuration.
 
 OpenOfficeController.php - Email Integration:
-Integrated send_system_email() for new reservations, approvals, denials (manual & auto), and user cancellations.
+Integrated send_system_email() for new reservations, approvals, denials, and cancellations.
 
 Key Changes & Fixes:
 Implemented email notifications for room reservation events. Made email sending configurable.
@@ -92,7 +91,6 @@ Features Implemented:
 
 OpenOfficeController.php (createreservation() method):
 Modified to correctly process form submissions using the new date input and 1-hour time slot dropdown.
-Parses time slot, combines with date, validates, checks conflicts, and stores full datetime strings.
 
 Key Changes & Fixes:
 Enabled server-side logic for 1-hour time slot selections.
@@ -104,7 +102,6 @@ Features Implemented:
 
 Reservation Form (app/views/openoffice/reservation_form.php):
 Replaced datetime-local inputs with a date input and a 1-hour time slot select dropdown.
-Previous JS for 30-min interval enforcement on datetime-local became inapplicable and was removed in favor of the new slot selection method.
 
 Key Changes & Fixes:
 Changed UI for time selection to predefined 1-hour slots.

@@ -263,3 +263,39 @@ INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
 -- Avoid duplicate entries. If a role already has a capability, these inserts might fail
 -- or you might want to use INSERT IGNORE or an UPDATE ON DUPLICATE KEY statement
 -- depending on your database setup and desired behavior.
+
+
+-- Ensure your role_keys (e.g., 'admin') exist in the 'roles' table.
+-- These are examples; adjust 'admin' or other role_keys as needed.
+
+-- For an 'admin' role, grant all new room CRUD capabilities:
+-- (Alternatively, if 'MANAGE_ROOMS' is a super capability that grants all these,
+--  you might only need to ensure 'admin' has 'MANAGE_ROOMS').
+-- For explicit granular control, assign each:
+INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+('admin', 'VIEW_ROOMS'),
+('admin', 'CREATE_ROOMS'),
+('admin', 'EDIT_ROOMS'),
+('admin', 'DELETE_ROOMS');
+
+-- For a role that should only be able to view rooms but not manage them (e.g., a standard 'user'):
+-- INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+-- ('user', 'VIEW_ROOMS');
+
+-- For a role that can manage rooms but perhaps not other admin functions (e.g., 'office_manager'):
+-- INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+-- ('office_manager', 'VIEW_ROOMS'),
+-- ('office_manager', 'CREATE_ROOMS'),
+-- ('office_manager', 'EDIT_ROOMS'),
+-- ('office_manager', 'DELETE_ROOMS');
+
+-- Important:
+-- 1. Ensure these capability keys match exactly what's in your config.php.
+-- 2. Ensure the role_name (e.g., 'admin', 'user') matches the role_key in your 'roles' table.
+-- 3. Avoid duplicate entries. If a role already has a capability, these inserts might fail
+--    or you might want to use INSERT IGNORE or an UPDATE ON DUPLICATE KEY statement
+--    depending on your database setup and desired behavior.
+-- 4. If you are using the logic where having 'MANAGE_ROOMS' grants all granular room permissions,
+--    you might not need to add all granular permissions explicitly to roles that already have 'MANAGE_ROOMS'.
+--    However, for clarity and future deprecation of 'MANAGE_ROOMS' as a catch-all,
+--    assigning granular permissions is a good practice.
