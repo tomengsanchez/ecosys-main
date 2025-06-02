@@ -8,11 +8,17 @@ $basePathStripped = rtrim(BASE_URL, '/');
 // Helper function to check if a nav link is active
 function isActive($linkPath, $currentPath, $basePathStripped) {
     $fullLinkPath = $basePathStripped . '/' . ltrim($linkPath, '/');
-    if ($linkPath === '' && $currentPath === $basePathStripped . '/') { // Home/Base URL
+    if ($linkPath === '' && ($currentPath === $basePathStripped . '/' || $currentPath === $basePathStripped)) { // Home/Base URL
         return true;
     }
     if ($linkPath !== '' && strpos($currentPath, $fullLinkPath) === 0) {
-        return true;
+        // Check for exact match or match up to a query string
+        if ($currentPath === $fullLinkPath || strpos($currentPath, $fullLinkPath . '?') === 0) {
+            return true;
+        }
+        // Also consider if it's a parent path, e.g. 'admin' for 'admin/users'
+        // This needs to be handled carefully to avoid overly broad matches.
+        // For now, exact or query string match is safer.
     }
     return false;
 }
@@ -32,13 +38,19 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $pageTitle ?? 'My Application'; ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT" crossorigin="anonymous">
+    <title><?php echo htmlspecialchars($pageTitle ?? 'My Application'); ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" xintegrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        body { padding-top: 56px; /* Adjust if navbar height changes */ }
+        .breadcrumb { background-color: #f8f9fa; padding: 0.75rem 1rem; border-radius: 0.25rem; }
+        .main-content { min-height: calc(100vh - 56px - 70px - 3rem); /* Full viewport - navbar - footer - margins */ }
+        footer { line-height: 1; }
+    </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
         <a class="navbar-brand" href="<?php echo BASE_URL; ?>">Mainsystem</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -51,25 +63,33 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                         <a class="nav-link <?php echo isActive('dashboard', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">Dashboard</a>
                     </li>
 
-                    <?php // Open Office Dropdown - visible if user has capability for at least one item inside or a general one
-                    // For simplicity, let's assume a general capability for the whole section.
-                    // You can refine this to check individual item capabilities if needed to show the dropdown.
-                    if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Example capability for the whole dropdown
+                    <?php 
+                    // Determine if Open Office dropdown should be shown
+                    $showOpenOfficeDropdown = userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS') || 
+                                              userHasCapability('MANAGE_ROOMS') || // Added this check
+                                              userHasCapability('MANAGE_VEHICLE_RESERVATIONS') || // Assuming a future capability
+                                              userHasCapability('MANAGE_SERVICE_REQUESTS');     // Assuming a future capability
+                    if ($showOpenOfficeDropdown):
                     ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('openoffice', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="openOfficeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             Open Office
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="openOfficeDropdown">
-                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or a more specific one like 'ACCESS_ROOM_RESERVATION' ?>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Rooms Reservation</a></li>
+                            <?php if (userHasCapability('MANAGE_ROOMS')): ?>
+                                <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Manage Rooms</a></li>
                             <?php endif; ?>
-                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or 'ACCESS_VEHICLE_RESERVATION' ?>
+                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): ?>
+                                <li><a class="dropdown-item <?php echo isActive('openoffice/roomreservations', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/roomreservations'; ?>">Room Reservations</a></li>
+                            <?php endif; ?>
+                            <?php /* Example for future items
+                            <?php if (userHasCapability('MANAGE_VEHICLE_RESERVATIONS')): ?>
                                 <li><a class="dropdown-item <?php echo isActive('openoffice/vehicles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/vehicles'; ?>">Vehicle Reservation</a></li>
                             <?php endif; ?>
-                             <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): // Or 'ACCESS_SERVICE_REQUEST' ?>
+                             <?php if (userHasCapability('MANAGE_SERVICE_REQUESTS')): ?>
                                 <li><a class="dropdown-item <?php echo isActive('openoffice/services', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/services'; ?>">Service Request</a></li>
                             <?php endif; ?>
+                            */ ?>
                         </ul>
                     </li>
                     <?php endif; ?>
@@ -111,7 +131,7 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
             </ul>
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                  <?php if (isLoggedIn()): ?>
-                    <?php // Admin Dropdown - only show if user has ACCESS_ADMIN_PANEL capability
+                    <?php 
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
@@ -120,13 +140,13 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminDropdown">
                                 <li><a class="dropdown-item <?php echo isActive('admin', $currentPath, $basePathStripped) && 
-                                                                    !strpos($currentPath, '/users') && 
-                                                                    !strpos($currentPath, '/departments') && 
-                                                                    !strpos($currentPath, '/siteSettings') && 
-                                                                    !strpos($currentPath, '/roleAccessSettings') &&
-                                                                    !strpos($currentPath, '/listRoles') && 
-                                                                    !strpos($currentPath, '/dtr') && 
-                                                                    !strpos($currentPath, '/assets') ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
+                                                                    !isDropdownSectionActive('admin/users', $currentPath, $basePathStripped) && 
+                                                                    !isDropdownSectionActive('admin/departments', $currentPath, $basePathStripped) && 
+                                                                    !isDropdownSectionActive('admin/siteSettings', $currentPath, $basePathStripped) && 
+                                                                    !isDropdownSectionActive('admin/roleAccessSettings', $currentPath, $basePathStripped) &&
+                                                                    !isDropdownSectionActive('admin/listRoles', $currentPath, $basePathStripped) && 
+                                                                    !isDropdownSectionActive('admin/dtr', $currentPath, $basePathStripped) && 
+                                                                    !isDropdownSectionActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
                                 
                                 <?php if (userHasCapability('MANAGE_USERS')): ?>
                                     <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
@@ -183,4 +203,3 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
     }
     ?>
     <div class="main-content">
-        

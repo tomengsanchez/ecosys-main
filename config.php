@@ -77,18 +77,18 @@ function generateBreadcrumbs($breadcrumbs = []) {
 define('CAPABILITIES', [
     'ACCESS_ADMIN_PANEL' => 'Access Admin Panel',
     'MANAGE_USERS' => 'Manage Users (Add, Edit, Delete)',
-    'MANAGE_ROLES' => 'Manage Roles (Add, Edit, Delete)', // New capability for managing roles themselves
+    'MANAGE_ROLES' => 'Manage Roles (Add, Edit, Delete)', 
     'MANAGE_ROLES_PERMISSIONS' => 'Manage Roles & Permissions',
     'MANAGE_DEPARTMENTS' => 'Manage Departments',
     'MANAGE_SITE_SETTINGS' => 'Manage Site Settings',
     'VIEW_REPORTS' => 'View Reports (Example)',
-    'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations',
+    'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations', // For actual booking system
+    'MANAGE_ROOMS' => 'Manage Rooms (CRUD)', // ADDED: For managing room entities
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',
     'MANAGE_RAP_CALENDAR' => 'Manage Rap Calendar',
     'MANAGE_SES_DATA' => 'Manage SES Data',
     'MANAGE_DTR' => 'Manage DTR Records',
     'MANAGE_ASSETS' => 'Manage Assets',
-
 ]);
 
 // REMOVED: define('DEFINED_ROLES', [...]); // Roles are now fetched from the database.
@@ -99,22 +99,21 @@ define('CAPABILITIES', [
  * @return array
  */
 function getDefinedRoles() {
-    global $pdo; // Access the global PDO object
-    static $rolesCache = null; // Simple static cache for the request
+    global $pdo; 
+    static $rolesCache = null; 
 
     if ($rolesCache !== null) {
         return $rolesCache;
     }
 
     if (!class_exists('RoleModel')) {
-        // Autoloader should handle this, but as a fallback for config context:
         $modelPath = __DIR__ . '/app/models/RoleModel.php';
         if (file_exists($modelPath)) require_once $modelPath;
         else { error_log("RoleModel class not found in getDefinedRoles()."); return []; }
     }
     
     $roleModel = new RoleModel($pdo);
-    $dbRoles = $roleModel->getAllRoles('role_key', 'ASC'); // Get all roles, ordered by key
+    $dbRoles = $roleModel->getAllRoles('role_key', 'ASC'); 
     
     $formattedRoles = [];
     if ($dbRoles) {
@@ -146,6 +145,12 @@ function userHasCapability($capability) {
         $modelPath = __DIR__ . '/app/models/RolePermissionModel.php';
         if (file_exists($modelPath)) require_once $modelPath;
         else { error_log("RolePermissionModel class not found in userHasCapability()."); return false; }
+    }
+    
+    // Ensure RoleModel is available if RolePermissionModel needs it (though it shouldn't directly)
+    if (!class_exists('RoleModel')) {
+        $modelPathRole = __DIR__ . '/app/models/RoleModel.php';
+        if (file_exists($modelPathRole)) require_once $modelPathRole;
     }
     
     if (class_exists('RolePermissionModel')) {
