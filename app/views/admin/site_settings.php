@@ -27,26 +27,22 @@ require_once __DIR__ . '/../layouts/header.php';
         <div class="card-body p-4">
             <form action="<?php echo BASE_URL . 'admin/siteSettings'; ?>" method="POST">
                 <?php if (!empty($manageableOptions) && is_array($manageableOptions)): ?>
-                    <?php foreach ($manageableOptions as $optionKey => $defaultValueOrLabel): ?>
+                    <?php foreach ($manageableOptions as $optionKey => $optionDetails): ?>
                         <?php
-                        // Determine label: if $defaultValueOrLabel is an array, it might contain more info like 'label', 'type'.
-                        // For simplicity, we'll assume $defaultValueOrLabel is the label if it's a string,
-                        // or we can derive a label from the key.
-                        $label = is_array($defaultValueOrLabel) && isset($defaultValueOrLabel['label']) ? $defaultValueOrLabel['label'] : ucwords(str_replace('_', ' ', $optionKey));
-                        $currentValue = $settings[$optionKey] ?? (is_array($defaultValueOrLabel) ? ($defaultValueOrLabel['default'] ?? '') : $defaultValueOrLabel);
-                        $inputType = is_array($defaultValueOrLabel) && isset($defaultValueOrLabel['type']) ? $defaultValueOrLabel['type'] : 'text';
-                        $options = is_array($defaultValueOrLabel) && isset($defaultValueOrLabel['options']) ? $defaultValueOrLabel['options'] : []; // For select/radio
-                        $helpText = is_array($defaultValueOrLabel) && isset($defaultValueOrLabel['help']) ? $defaultValueOrLabel['help'] : '';
-
+                        $label = $optionDetails['label'] ?? ucwords(str_replace('_', ' ', $optionKey));
+                        $currentValue = $settings[$optionKey] ?? ($optionDetails['default'] ?? '');
+                        $inputType = $optionDetails['type'] ?? 'text';
+                        $optionsForSelect = $optionDetails['options'] ?? []; 
+                        $helpText = $optionDetails['help'] ?? '';
                         ?>
                         <div class="mb-3">
                             <label for="<?php echo htmlspecialchars($optionKey); ?>" class="form-label"><?php echo htmlspecialchars($label); ?>:</label>
                             
                             <?php if ($inputType === 'textarea'): ?>
                                 <textarea name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control" rows="3"><?php echo htmlspecialchars($currentValue); ?></textarea>
-                            <?php elseif ($inputType === 'select' && !empty($options)): ?>
+                            <?php elseif ($inputType === 'select' && !empty($optionsForSelect)): ?>
                                 <select name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-select">
-                                    <?php foreach ($options as $value => $display): ?>
+                                    <?php foreach ($optionsForSelect as $value => $display): ?>
                                         <option value="<?php echo htmlspecialchars($value); ?>" <?php echo ($currentValue == $value) ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($display); ?>
                                         </option>
@@ -56,7 +52,7 @@ require_once __DIR__ . '/../layouts/header.php';
                                  <input type="number" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control"
                                        value="<?php echo htmlspecialchars($currentValue); ?>">
                             <?php else: // Default to text input ?>
-                                <input type="text" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control"
+                                <input type="<?php echo htmlspecialchars($inputType); // Allows 'email', 'text', etc. ?>" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control"
                                        value="<?php echo htmlspecialchars($currentValue); ?>">
                             <?php endif; ?>
                             <?php if ($helpText): ?>

@@ -13,10 +13,9 @@ require_once __DIR__ . '/../layouts/header.php';
 <div class="openoffice-reservations-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Room Reservations'); ?></h1>
-        </div>
+    </div>
 
     <?php
-    // Display any session messages (using 'admin_message' for consistency from controller)
     if (isset($_SESSION['admin_message'])) {
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && 
                       strpos(strtolower($_SESSION['admin_message']), 'fail') === false && 
@@ -27,7 +26,7 @@ require_once __DIR__ . '/../layouts/header.php';
              '</div>';
         unset($_SESSION['admin_message']); 
     }
-    if (isset($_SESSION['error_message'])) { // For general errors
+    if (isset($_SESSION['error_message'])) { 
         echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['error_message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
@@ -58,15 +57,15 @@ require_once __DIR__ . '/../layouts/header.php';
                             <td><?php echo htmlspecialchars($reservation['object_id']); ?></td>
                             <td><?php echo htmlspecialchars($reservation['room_name'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($reservation['user_display_name'] ?? 'N/A'); ?></td>
-                            <td><?php echo nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')); // Purpose ?></td>
-                            <td><?php echo htmlspecialchars(isset($reservation['meta']['reservation_start_datetime']) ? date('Y-m-d H:i', strtotime($reservation['meta']['reservation_start_datetime'])) : 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars(isset($reservation['meta']['reservation_end_datetime']) ? date('Y-m-d H:i', strtotime($reservation['meta']['reservation_end_datetime'])) : 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($reservation['object_date']))); ?></td>
+                            <td><?php echo nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['object_date'])); ?></td>
                             <td>
                                 <?php 
                                 $statusKey = $reservation['object_status'] ?? 'unknown';
                                 $statusLabel = $reservation_statuses[$statusKey] ?? ucfirst($statusKey);
-                                $badgeClass = 'bg-secondary'; // Default
+                                $badgeClass = 'bg-secondary'; 
                                 if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
                                 elseif ($statusKey === 'approved') $badgeClass = 'bg-success';
                                 elseif ($statusKey === 'denied') $badgeClass = 'bg-danger';
@@ -95,13 +94,6 @@ require_once __DIR__ . '/../layouts/header.php';
                                 <?php else: ?>
                                     <span class="text-muted small">No actions</span>
                                 <?php endif; ?>
-                                <!-- 
-                                <a href="<?php echo BASE_URL . 'openoffice/deletereservation/' . htmlspecialchars($reservation['object_id']); ?>" 
-                                   class="btn btn-sm btn-outline-danger mt-1" title="Delete Record"
-                                   onclick="return confirm('Are you sure you want to permanently delete this reservation record? This cannot be undone.');">
-                                    <i class="fas fa-trash-alt"></i> Delete
-                                </a>
-                                 -->
                             </td>
                         </tr>
                     <?php endforeach; ?>

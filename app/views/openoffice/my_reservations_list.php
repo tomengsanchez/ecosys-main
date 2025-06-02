@@ -19,7 +19,6 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // Display any session messages
     if (isset($_SESSION['message'])) {
         echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['message']) . 
@@ -56,15 +55,15 @@ require_once __DIR__ . '/../layouts/header.php';
                         <tr>
                             <td><?php echo htmlspecialchars($reservation['object_id']); ?></td>
                             <td><?php echo htmlspecialchars($reservation['room_name'] ?? 'N/A'); ?></td>
-                            <td><?php echo nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')); // Purpose ?></td>
-                            <td><?php echo htmlspecialchars(isset($reservation['meta']['reservation_start_datetime']) ? date('Y-m-d H:i', strtotime($reservation['meta']['reservation_start_datetime'])) : 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars(isset($reservation['meta']['reservation_end_datetime']) ? date('Y-m-d H:i', strtotime($reservation['meta']['reservation_end_datetime'])) : 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($reservation['object_date']))); ?></td>
+                            <td><?php echo nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['object_date'])); ?></td>
                             <td>
                                 <?php 
                                 $statusKey = $reservation['object_status'] ?? 'unknown';
                                 $statusLabel = $reservation_statuses[$statusKey] ?? ucfirst($statusKey);
-                                $badgeClass = 'bg-secondary'; // Default
+                                $badgeClass = 'bg-secondary'; 
                                 if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
                                 elseif ($statusKey === 'approved') $badgeClass = 'bg-success';
                                 elseif ($statusKey === 'denied') $badgeClass = 'bg-danger';

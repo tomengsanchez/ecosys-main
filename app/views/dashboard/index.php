@@ -61,41 +61,38 @@ if (isset($_SESSION)) {
 document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('reservationCalendar');
     if (calendarEl) {
-        var calendarEvents = <?php echo $calendarEvents ?? '[]'; ?>; // Get events from PHP
+        var calendarEvents = <?php echo $calendarEvents ?? '[]'; ?>; 
 
         var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth', // Default view
+            initialView: 'dayGridMonth', 
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
             },
             events: calendarEvents,
-            editable: false, // Set to true if you want drag-and-drop editing
-            selectable: true, // Allows clicking on dates/times
+            editable: false, 
+            selectable: true, 
             eventDidMount: function(info) {
-                // Tooltip for event details
+                // Tooltip for event details using pre-formatted times
                 var tooltipContent = `
                     <strong>${info.event.extendedProps.roomName || info.event.title}</strong><br>
                     Booked by: ${info.event.extendedProps.userName || 'N/A'}<br>
                     Status: ${info.event.extendedProps.status || 'N/A'}<br>
-                    Purpose: ${info.event.extendedProps.purpose || 'N/A'}
+                    Purpose: ${info.event.extendedProps.purpose || 'N/A'}<br>
+                    <hr class='my-1'>
+                    Starts: ${info.event.extendedProps.formattedStartTime || 'N/A'}<br>
+                    Ends: ${info.event.extendedProps.formattedEndTime || 'N/A'}
                 `;
                 var tooltip = new bootstrap.Tooltip(info.el, {
                     title: tooltipContent,
                     placement: 'top',
                     trigger: 'hover',
                     container: 'body',
-                    html: true
+                    html: true,
+                    sanitize: false // Allow HTML in tooltip, ensure content is safe from PHP side
                 });
             },
-            // Example: handle date click to go to reservation form (more advanced)
-            // dateClick: function(info) {
-            //    alert('Clicked on: ' + info.dateStr);
-            //    alert('Coordinates: ' + info.jsEvent.pageX + ',' + info.jsEvent.pageY);
-            //    alert('Current view: ' + info.view.type);
-            //    // Potentially redirect to a reservation form pre-filled with this date
-            // }
         });
         calendar.render();
     } else {

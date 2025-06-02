@@ -8,7 +8,7 @@ require_once __DIR__ . '/../layouts/header.php';
 <div class="openoffice-rooms-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Rooms'); ?></h1>
-        <?php if (userHasCapability('MANAGE_ROOMS')): // Only show Add Room if user can manage rooms ?>
+        <?php if (userHasCapability('MANAGE_ROOMS')): ?>
         <a href="<?php echo BASE_URL . 'openoffice/addRoom'; ?>" class="btn btn-success">
             <i class="fas fa-plus"></i> Add New Room
         </a>
@@ -17,7 +17,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
     <?php
     // Display any session messages
-    if (isset($_SESSION['admin_message'])) { // Used for messages from room CRUD by admin
+    if (isset($_SESSION['admin_message'])) { 
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && 
                       strpos(strtolower($_SESSION['admin_message']), 'fail') === false && 
                       strpos(strtolower($_SESSION['admin_message']), 'cannot') === false) ? 'success' : 'danger';
@@ -27,14 +27,14 @@ require_once __DIR__ . '/../layouts/header.php';
              '</div>';
         unset($_SESSION['admin_message']); 
     }
-    if (isset($_SESSION['message'])) { // Generic success message (e.g., after booking attempt)
+    if (isset($_SESSION['message'])) { 
         echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
              '</div>';
         unset($_SESSION['message']);
     }
-    if (isset($_SESSION['error_message'])) { // Generic error message
+    if (isset($_SESSION['error_message'])) { 
         echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['error_message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
@@ -84,7 +84,7 @@ require_once __DIR__ . '/../layouts/header.php';
                                 ?>
                             </td>
                             <?php if (userHasCapability('MANAGE_ROOMS')): ?>
-                                <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($room['object_modified']))); ?></td>
+                                <td><?php echo htmlspecialchars(format_datetime_for_display($room['object_modified'])); ?></td>
                             <?php endif; ?>
                             <td>
                                 <?php if ($room['object_status'] === 'available'): ?>

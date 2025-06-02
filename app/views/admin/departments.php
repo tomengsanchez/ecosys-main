@@ -45,21 +45,14 @@ require_once __DIR__ . '/../layouts/header.php';
                             <td><?php echo htmlspecialchars($department['department_name']); ?></td>
                             <td><?php echo nl2br(htmlspecialchars($department['department_description'] ?? 'N/A')); ?></td>
                             <td><?php echo htmlspecialchars($department['user_count'] ?? 0); ?></td>
-                            <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($department['created_at']))); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($department['created_at'])); ?></td>
                             <td>
                                 <a href="<?php echo BASE_URL . 'admin/editDepartment/' . htmlspecialchars($department['department_id']); ?>" class="btn btn-sm btn-primary me-1" title="Edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
                                 <?php 
-                                // Optionally, disable delete if users are in the department,
-                                // though ON DELETE SET NULL handles this at DB level.
-                                // This is more of a UI hint.
                                 $deleteDisabled = ($department['user_count'] > 0) ? 'disabled' : '';
                                 $deleteTitle = ($department['user_count'] > 0) ? 'Cannot delete: department has users. Unassign users first or they will be set to NULL.' : 'Delete';
-                                if ($department['user_count'] > 0 && false) { // Change 'false' to 'true' to enable this stricter UI check
-                                     // This part is an example if you want stricter UI control
-                                     // For now, we rely on ON DELETE SET NULL
-                                }
                                 ?>
                                 <a href="<?php echo BASE_URL . 'admin/deleteDepartment/' . htmlspecialchars($department['department_id']); ?>" 
                                    class="btn btn-sm btn-danger <?php // echo $deleteDisabled; // Uncomment to visually disable if users exist ?>" 

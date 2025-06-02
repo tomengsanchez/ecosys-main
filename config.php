@@ -13,7 +13,14 @@ define('DB_COLLATE', '');
 
 define('BASE_URL', '/mainsystem/'); 
 
-$pdo = null; // This will be our global PDO object
+// Default Timezone (PHP requires this to be set for date/time functions)
+// You might want to make this a site setting as well in the future.
+date_default_timezone_set('Asia/Manila'); // Example: Philippines timezone
+
+// Default Time Format if not set in options
+define('DEFAULT_TIME_FORMAT', 'Y-m-d H:i'); // Example: 2025-06-02 15:30
+
+$pdo = null; 
 $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, 
@@ -31,8 +38,6 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Autoloader for models (if not already in index.php or a central bootstrap file)
-// This is important for functions in this config file that might need models.
 spl_autoload_register(function ($className) {
     $modelPath = __DIR__ . '/app/models/' . $className . '.php';
     if (file_exists($modelPath)) {
@@ -68,12 +73,65 @@ function generateBreadcrumbs($breadcrumbs = []) {
     return $html;
 }
 
-// --- Role and Capability Management ---
+/**
+ * Get the site-wide configured time format.
+ *
+ * @global PDO $pdo
+ * @return string The time format string.
+ */
+function get_site_time_format() {
+    global $pdo;
+    static $siteTimeFormat = null;
+
+    if ($siteTimeFormat !== null) {
+        return $siteTimeFormat;
+    }
+
+    if (!class_exists('OptionModel')) {
+        $modelPath = __DIR__ . '/app/models/OptionModel.php';
+        if (file_exists($modelPath)) require_once $modelPath;
+        else { 
+            error_log("OptionModel class not found in get_site_time_format(). Using default.");
+            $siteTimeFormat = DEFAULT_TIME_FORMAT;
+            return $siteTimeFormat;
+        }
+    }
+    
+    $optionModel = new OptionModel($pdo);
+    $formatFromDb = $optionModel->getOption('site_time_format');
+
+    if ($formatFromDb) {
+        $siteTimeFormat = $formatFromDb;
+    } else {
+        $siteTimeFormat = DEFAULT_TIME_FORMAT;
+    }
+    return $siteTimeFormat;
+}
 
 /**
- * Define all available capabilities in the system.
- * This list remains the master definition of what capabilities *can* exist.
+ * Format a datetime string for display using the site's configured time format.
+ *
+ * @param string $datetimeString The datetime string to format (e.g., from database).
+ * @param string|null $customFormat Optional custom format string to override site setting.
+ * @return string The formatted datetime string, or the original string if input is invalid.
  */
+function format_datetime_for_display($datetimeString, $customFormat = null) {
+    if (empty($datetimeString) || $datetimeString === '0000-00-00 00:00:00') {
+        return 'N/A'; // Or an empty string, or however you want to handle invalid/empty dates
+    }
+    try {
+        $formatToUse = $customFormat ?: get_site_time_format();
+        $date = new DateTime($datetimeString); // Assumes $datetimeString is in a format DateTime can parse
+        return $date->format($formatToUse);
+    } catch (Exception $e) {
+        error_log("Error formatting date '{$datetimeString}': " . $e->getMessage());
+        return htmlspecialchars($datetimeString); // Return original on error, safely escaped
+    }
+}
+
+
+// --- Role and Capability Management ---
+
 define('CAPABILITIES', [
     'ACCESS_ADMIN_PANEL' => 'Access Admin Panel',
     'MANAGE_USERS' => 'Manage Users (Add, Edit, Delete)',
@@ -82,8 +140,8 @@ define('CAPABILITIES', [
     'MANAGE_DEPARTMENTS' => 'Manage Departments',
     'MANAGE_SITE_SETTINGS' => 'Manage Site Settings',
     'VIEW_REPORTS' => 'View Reports (Example)',
-    'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations', // For actual booking system
-    'MANAGE_ROOMS' => 'Manage Rooms (CRUD)', // ADDED: For managing room entities
+    'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations', 
+    'MANAGE_ROOMS' => 'Manage Rooms (CRUD)', 
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',
     'MANAGE_RAP_CALENDAR' => 'Manage Rap Calendar',
     'MANAGE_SES_DATA' => 'Manage SES Data',
@@ -91,13 +149,6 @@ define('CAPABILITIES', [
     'MANAGE_ASSETS' => 'Manage Assets',
 ]);
 
-// REMOVED: define('DEFINED_ROLES', [...]); // Roles are now fetched from the database.
-
-/**
- * Get all defined roles from the database.
- * Returns an associative array [role_key => role_name]
- * @return array
- */
 function getDefinedRoles() {
     global $pdo; 
     static $rolesCache = null; 
@@ -125,14 +176,6 @@ function getDefinedRoles() {
     return $rolesCache;
 }
 
-
-/**
- * Check if the currently logged-in user has a specific capability.
- * This function now queries the database via RolePermissionModel.
- *
- * @param string $capability The capability key (e.g., 'MANAGE_USERS').
- * @return bool True if the user has the capability, false otherwise.
- */
 function userHasCapability($capability) {
     global $pdo; 
 
@@ -147,7 +190,6 @@ function userHasCapability($capability) {
         else { error_log("RolePermissionModel class not found in userHasCapability()."); return false; }
     }
     
-    // Ensure RoleModel is available if RolePermissionModel needs it (though it shouldn't directly)
     if (!class_exists('RoleModel')) {
         $modelPathRole = __DIR__ . '/app/models/RoleModel.php';
         if (file_exists($modelPathRole)) require_once $modelPathRole;

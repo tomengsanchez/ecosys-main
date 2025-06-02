@@ -55,7 +55,7 @@ require_once __DIR__ . '/../layouts/header.php';
                                     <span class="badge bg-secondary">No</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($role['created_at']))); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($role['created_at'])); ?></td>
                             <td>
                                 <a href="<?php echo BASE_URL . 'admin/editRole/' . htmlspecialchars($role['role_id']); ?>" class="btn btn-sm btn-primary me-1" title="Edit">
                                     <i class="fas fa-edit"></i> Edit

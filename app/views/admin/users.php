@@ -42,7 +42,8 @@ require_once __DIR__ . '/../layouts/header.php';
                         <th>Email</th>
                         <th>Display Name</th>
                         <th>Role</th>
-                        <th>Department</th> <th>Registered</th>
+                        <th>Department</th>
+                        <th>Registered</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -55,7 +56,8 @@ require_once __DIR__ . '/../layouts/header.php';
                             <td><?php echo htmlspecialchars($user['user_email']); ?></td>
                             <td><?php echo htmlspecialchars($user['display_name']); ?></td>
                             <td><?php echo htmlspecialchars(ucfirst($user['user_role'])); ?></td>
-                            <td><?php echo htmlspecialchars($user['department_name'] ?? 'N/A'); ?></td> <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($user['user_registered']))); ?></td>
+                            <td><?php echo htmlspecialchars($user['department_name'] ?? 'N/A'); ?></td>
+                            <td><?php echo htmlspecialchars(format_datetime_for_display($user['user_registered'])); ?></td>
                             <td>
                                 <?php if ($user['user_status'] == 0): ?>
                                     <span class="badge bg-success">Active</span>
