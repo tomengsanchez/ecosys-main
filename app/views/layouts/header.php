@@ -37,6 +37,7 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
     <title><?php echo htmlspecialchars($pageTitle ?? 'My Application'); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" xintegrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/index.global.min.js'></script>
     <style>
         body { padding-top: 70px; /* Adjusted for potentially taller navbar */ }
         .breadcrumb { background-color: #f8f9fa; padding: 0.75rem 1rem; border-radius: 0.25rem; margin-bottom: 1rem; }

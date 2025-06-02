@@ -33,7 +33,6 @@ class ObjectModel {
             return false;
         }
 
-        // Generate slug from title if object_name (slug) is not provided
         if (empty($data['object_name'])) {
             $data['object_name'] = $this->generateSlug($data['object_title']);
         }
@@ -48,7 +47,7 @@ class ObjectModel {
                 ':object_title' => $data['object_title'],
                 ':object_type' => $data['object_type'],
                 ':object_content' => $data['object_content'] ?? null,
-                ':object_excerpt' => $data['object_excerpt'] ?? '', // MODIFIED: Default to empty string instead of null
+                ':object_excerpt' => $data['object_excerpt'] ?? '',
                 ':object_status' => $data['object_status'] ?? 'publish',
                 ':object_name' => $data['object_name'],
                 ':object_parent' => $data['object_parent'] ?? 0,
@@ -104,6 +103,7 @@ class ObjectModel {
     public function getObjectsByType($objectType, array $args = []) {
         try {
             $sql = "SELECT * FROM objects WHERE object_type = :object_type";
+            $params = [':object_type' => $objectType];
 
             // Order by
             $orderBy = $args['orderby'] ?? 'object_date';
@@ -125,7 +125,7 @@ class ObjectModel {
             }
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([':object_type' => $objectType]);
+            $stmt->execute($params);
             $objects = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             if ($objects && ($args['include_meta'] ?? true)) {
@@ -139,6 +139,78 @@ class ObjectModel {
             return false;
         }
     }
+    
+    /**
+     * Get objects based on type and other conditions.
+     *
+     * @param string $objectType The type of objects to retrieve.
+     * @param array $conditions Associative array of conditions (e.g., ['object_status' => 'pending'] or ['object_status' => ['pending', 'approved']]).
+     * @param array $args Optional arguments like 'orderby', 'orderdir', 'include_meta'.
+     * @return array|false An array of object arrays, or false on failure.
+     */
+    public function getObjectsByConditions($objectType, array $conditions = [], array $args = []) {
+        try {
+            $sql = "SELECT * FROM objects WHERE object_type = :object_type";
+            $params = [':object_type' => $objectType];
+            $whereClauses = [];
+
+            foreach ($conditions as $field => $value) {
+                if (is_array($value)) { // Handle IN clause for multiple values (e.g., status in ('pending', 'approved'))
+                    $placeholders = [];
+                    foreach ($value as $idx => $val) {
+                        $paramName = ":{$field}_{$idx}";
+                        $placeholders[] = $paramName;
+                        $params[$paramName] = $val;
+                    }
+                    $whereClauses[] = "{$field} IN (" . implode(',', $placeholders) . ")";
+                } else { // Handle single value equality
+                    $paramName = ":{$field}";
+                    $whereClauses[] = "{$field} = {$paramName}";
+                    $params[$paramName] = $value;
+                }
+            }
+
+            if (!empty($whereClauses)) {
+                $sql .= " AND " . implode(" AND ", $whereClauses);
+            }
+
+            // Order by
+            $orderBy = $args['orderby'] ?? 'object_date';
+            $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
+            $allowedOrderBy = ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified', 'object_status']; // Add more if needed
+            if (!in_array($orderBy, $allowedOrderBy)) {
+                $orderBy = 'object_date';
+            }
+            if (!in_array($orderDir, ['ASC', 'DESC'])) {
+                $orderDir = 'DESC';
+            }
+            $sql .= " ORDER BY {$orderBy} {$orderDir}";
+
+            // Limit and Offset for pagination
+            if (isset($args['limit']) && is_numeric($args['limit'])) {
+                $sql .= " LIMIT " . (int)$args['limit'];
+                if (isset($args['offset']) && is_numeric($args['offset'])) {
+                    $sql .= " OFFSET " . (int)$args['offset'];
+                }
+            }
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $objects = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if ($objects && ($args['include_meta'] ?? true)) {
+                foreach ($objects as $key => $object) {
+                    $objects[$key]['meta'] = $this->getAllObjectMeta($object['object_id']);
+                }
+            }
+            return $objects;
+
+        } catch (PDOException $e) {
+            error_log("Error in ObjectModel::getObjectsByConditions({$objectType}): " . $e->getMessage());
+            return false;
+        }
+    }
+
 
     /**
      * Update an existing object's details and its metadata.
@@ -155,7 +227,6 @@ class ObjectModel {
         foreach ($data as $key => $value) {
             if (in_array($key, $allowedFields)) {
                 $sqlParts[] = "{$key} = :{$key}";
-                // Provide default for excerpt if it's being updated and is null
                 if ($key === 'object_excerpt' && $value === null) {
                     $params[":{$key}"] = '';
                 } else {
@@ -164,14 +235,15 @@ class ObjectModel {
             }
         }
         
-        // Always update modified time
-        $sqlParts[] = "object_modified = NOW()";
-        $sqlParts[] = "object_modified_gmt = NOW()";
+        if (!empty($sqlParts) || isset($data['meta_fields'])) { // Only update modified time if there's something to change in main table or meta
+            $sqlParts[] = "object_modified = NOW()";
+            $sqlParts[] = "object_modified_gmt = NOW()";
+        }
 
 
         if (empty($sqlParts) && empty($data['meta_fields'])) {
              error_log("ObjectModel::updateObject: No fields to update for object ID {$objectId}.");
-            return true; // Nothing to update in the main table, but meta might still be processed.
+            return true; 
         }
 
         try {
@@ -179,11 +251,10 @@ class ObjectModel {
                 $sql = "UPDATE objects SET " . implode(', ', $sqlParts) . " WHERE object_id = :object_id";
                 $stmt = $this->pdo->prepare($sql);
                 if (!$stmt->execute($params)) {
-                    return false; // Failed to update main object table
+                    return false; 
                 }
             }
 
-            // Update meta fields
             if (!empty($data['meta_fields']) && is_array($data['meta_fields'])) {
                 foreach ($data['meta_fields'] as $metaKey => $metaValue) {
                     $this->addOrUpdateObjectMeta($objectId, $metaKey, $metaValue);
@@ -206,12 +277,10 @@ class ObjectModel {
         try {
             $this->pdo->beginTransaction();
 
-            // Delete all metadata associated with the object
             $sqlMeta = "DELETE FROM objectmeta WHERE object_id = :object_id";
             $stmtMeta = $this->pdo->prepare($sqlMeta);
             $stmtMeta->execute([':object_id' => $objectId]);
 
-            // Delete the object itself
             $sqlObject = "DELETE FROM objects WHERE object_id = :object_id";
             $stmtObject = $this->pdo->prepare($sqlObject);
             $stmtObject->execute([':object_id' => $objectId]);
@@ -235,19 +304,16 @@ class ObjectModel {
      */
     public function addOrUpdateObjectMeta($objectId, $metaKey, $metaValue) {
         try {
-            // Check if meta key already exists for this object
             $sqlCheck = "SELECT meta_id FROM objectmeta WHERE object_id = :object_id AND meta_key = :meta_key LIMIT 1";
             $stmtCheck = $this->pdo->prepare($sqlCheck);
             $stmtCheck->execute([':object_id' => $objectId, ':meta_key' => $metaKey]);
             $existingMeta = $stmtCheck->fetch();
 
             if ($existingMeta) {
-                // Update existing meta
                 $sql = "UPDATE objectmeta SET meta_value = :meta_value WHERE meta_id = :meta_id";
                 $stmt = $this->pdo->prepare($sql);
                 return $stmt->execute([':meta_value' => $metaValue, ':meta_id' => $existingMeta['meta_id']]);
             } else {
-                // Insert new meta
                 $sql = "INSERT INTO objectmeta (object_id, meta_key, meta_value) VALUES (:object_id, :meta_key, :meta_value)";
                 $stmt = $this->pdo->prepare($sql);
                 return $stmt->execute([':object_id' => $objectId, ':meta_key' => $metaKey, ':meta_value' => $metaValue]);
@@ -325,22 +391,15 @@ class ObjectModel {
      * @return string The slug.
      */
     private function generateSlug($text) {
-        // Remove apostrophes
         $text = str_replace("'", "", $text);
-        // Replace non-alphanumeric characters (except hyphens and underscores) with a hyphen
         $text = preg_replace('~[^\pL\d]+~u', '-', $text);
-        // Transliterate
         $text = iconv('utf-8', 'us-ascii//TRANSLIT', $text);
-        // Remove unwanted characters
         $text = preg_replace('~[^-\w]+~', '', $text);
-        // Trim
         $text = trim($text, '-');
-        // Remove duplicate hyphens
         $text = preg_replace('~-+~', '-', $text);
-        // Lowercase
         $text = strtolower($text);
         if (empty($text)) {
-            return 'n-a-' . time(); // Fallback for empty slugs
+            return 'n-a-' . time(); 
         }
         return $text;
     }

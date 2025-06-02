@@ -1,13 +1,60 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.12.0 - Dashboard Calendar for Room Reservations (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+Layout Updates (Header & Footer):
+app/views/layouts/header.php:
+Added FullCalendar library (JS and CSS) via CDN.
+app/views/layouts/footer.php:
+No changes needed for FullCalendar's JS as the global bundle was included in the header.
+
+DashboardController.php (index() method):
+Instantiated ObjectModel and UserModel.
+Fetched room reservations with 'pending' or 'approved' status using a new getObjectsByConditions() method in ObjectModel.
+Processed reservations into a JSON array suitable for FullCalendar events. Each event includes:
+title: "Room Name (User Name)"
+start: Reservation start datetime.
+end: Reservation end datetime.
+color: Green for 'approved', Yellow for 'pending'.
+extendedProps: Additional data like purpose, status, roomName, userName for tooltips.
+Passed the JSON encoded event data to the dashboard view.
+
+ObjectModel.php:
+Added new method getObjectsByConditions($objectType, array $conditions, array $args):
+Allows fetching objects based on specific field conditions (e.g., object_status IN ('pending', 'approved')).
+Supports multiple values for a condition (generates SQL IN clause).
+Includes standard arguments for ordering and metadata inclusion.
+
+Dashboard View (app/views/dashboard/index.php):
+Added a <div> with id="reservationCalendar" to serve as the calendar container.
+Included JavaScript to initialize FullCalendar:
+Sets initialView to dayGridMonth.
+Configures headerToolbar for navigation and view switching.
+Loads events from the JSON data provided by the controller.
+Implements eventDidMount to add Bootstrap tooltips on event hover, showing reservation details (Room, User, Status, Purpose).
+Added a simple legend below the calendar for event colors (Approved, Pending).
+
+Key Changes & Fixes:
+Enhanced dashboard with a visual calendar for room reservations.
+Improved data fetching in ObjectModel with a more flexible querying method.
+
+To-Do / Next Steps (Examples for Calendar):
+Make calendar events clickable to view/edit reservation details.
+Implement filtering options for the calendar (e.g., by room, by status).
+Integrate other types of requests (IT, Service) into the calendar if desired.
+Refine styling and responsiveness of the calendar.
+
 Version 0.11.0 - Room Reservation System (Basic) (2025-06-02)
 Date: 2025-06-02
 
 Features Implemented:
 
 Config Updates:
-No new capabilities were strictly added in this step as 'MANAGE_OPEN_OFFICE_RESERVATIONS' and 'MANAGE_ROOMS' were pre-existing or added in prior conceptual steps. Ensured 'MANAGE_ROOMS' is present for clarity.
+Ensured 'MANAGE_ROOMS' capability is present for clarity.
 
 OpenOfficeController.php - Reservation Logic:
 Instantiated UserModel to fetch user details for reservations.
