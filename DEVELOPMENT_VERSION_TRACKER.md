@@ -1,6 +1,52 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.11.0 - Room Reservation System (Basic) (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+Config Updates:
+No new capabilities were strictly added in this step as 'MANAGE_OPEN_OFFICE_RESERVATIONS' and 'MANAGE_ROOMS' were pre-existing or added in prior conceptual steps. Ensured 'MANAGE_ROOMS' is present for clarity.
+
+OpenOfficeController.php - Reservation Logic:
+Instantiated UserModel to fetch user details for reservations.
+Added roomreservations(): Displays a list of all room reservations for users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' capability. Fetches associated room names and user display names.
+Added createreservation($roomId): Allows any logged-in user to submit a reservation request for an 'available' room. Reservations are created with 'pending' status and linked to the room via object_parent. Basic validation for dates and purpose.
+Added myreservations(): Allows logged-in users to view a list of their own reservation requests and their statuses.
+Added cancelreservation($reservationId): Allows users to cancel their own 'pending' reservations.
+Added approvereservation($reservationId): Allows users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' to approve a 'pending' reservation.
+Added denyreservation($reservationId): Allows users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' to deny a 'pending' reservation.
+
+New Views for Reservations:
+app/views/openoffice/reservation_form.php: Form for users to create a new room reservation request. Displays room details and includes fields for start/end datetime and purpose.
+app/views/openoffice/reservations_list.php: Admin view to list all room reservations with details (room, user, purpose, times, status) and action buttons (Approve, Deny, Revoke).
+app/views/openoffice/my_reservations_list.php: User view to list their own reservations with status and an option to cancel pending requests.
+
+Layout and View Updates:
+app/views/layouts/header.php:
+Added "Room Reservations (Admin)" link to "Open Office" dropdown for users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' capability.
+Added "My Reservations" link to "Open Office" dropdown for all logged-in users.
+Included Font Awesome icons for navigation links.
+Adjusted isActive helper and navbar styling for better UX.
+app/views/openoffice/rooms_list.php:
+Added a "Book" button for each 'available' room, linking to the createreservation action.
+Conditional display of admin-specific columns (ID, Last Modified) and actions (Edit, Delete room) based on 'MANAGE_ROOMS' capability.
+Conditional display of "Add New Room" button based on 'MANAGE_ROOMS' capability.
+
+Object Model Usage:
+Utilized the existing ObjectModel for all CRUD operations related to 'reservation' objects.
+Reservations are stored as objects with object_type = 'reservation'.
+The object_parent field of a reservation object stores the object_id of the reserved room.
+Reservation details (start/end times, purpose) are stored in object_content and objectmeta.
+
+To-Do / Next Steps (Examples for Reservation System):
+Implement robust conflict checking for reservations to prevent double bookings.
+Add email notifications for reservation status changes (pending, approved, denied, cancelled).
+Implement a calendar view for room availability and existing bookings.
+Allow editing of pending reservations by users or admins.
+More detailed user feedback and error handling.
+
 Version 0.10.0 - Dynamic Role Management (CRUD) (2025-05-30)
 Date: 2025-05-30
 
