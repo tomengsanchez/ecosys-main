@@ -55,8 +55,8 @@ require_once __DIR__ . '/../layouts/header.php';
                         <label for="reservation_start_datetime" class="form-label">Start Date & Time <span class="text-danger">*</span></label>
                         <input type="datetime-local" name="reservation_start_datetime" id="reservation_start_datetime" 
                                class="form-control <?php echo (!empty($errors['start_err'])) ? 'is-invalid' : ''; ?>"
-                               value="<?php echo htmlspecialchars($reservation_start_datetime ?? ''); ?>" required>
-                        <?php if (!empty($errors['start_err'])): ?>
+                               value="<?php echo htmlspecialchars($reservation_start_datetime ?? ''); ?>" 
+                               step="1800" required> <?php if (!empty($errors['start_err'])): ?>
                             <div class="invalid-feedback"><?php echo htmlspecialchars($errors['start_err']); ?></div>
                         <?php endif; ?>
                     </div>
@@ -65,8 +65,8 @@ require_once __DIR__ . '/../layouts/header.php';
                         <label for="reservation_end_datetime" class="form-label">End Date & Time <span class="text-danger">*</span></label>
                         <input type="datetime-local" name="reservation_end_datetime" id="reservation_end_datetime"
                                class="form-control <?php echo (!empty($errors['end_err'])) ? 'is-invalid' : ''; ?>"
-                               value="<?php echo htmlspecialchars($reservation_end_datetime ?? ''); ?>" required>
-                        <?php if (!empty($errors['end_err'])): ?>
+                               value="<?php echo htmlspecialchars($reservation_end_datetime ?? ''); ?>" 
+                               step="1800" required> <?php if (!empty($errors['end_err'])): ?>
                             <div class="invalid-feedback"><?php echo htmlspecialchars($errors['end_err']); ?></div>
                         <?php endif; ?>
                     </div>
@@ -83,6 +83,7 @@ require_once __DIR__ . '/../layouts/header.php';
                     
                     <p class="text-muted small">
                         Your reservation request will be submitted for approval. You can view the status of your requests under "My Reservations".
+                        Time selections are in 30-minute intervals.
                     </p>
 
                     <div class="d-grid gap-2 mt-4">
