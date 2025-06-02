@@ -228,14 +228,12 @@ class OpenOfficeController {
             redirect('openoffice/rooms');
         }
 
-        // Check for existing reservations for this room before deleting
         $existingReservations = $this->objectModel->getObjectsByConditions('reservation', ['object_parent' => $roomId]);
         if (!empty($existingReservations)) {
             $_SESSION['admin_message'] = 'Error: Cannot delete room "' . htmlspecialchars($room['object_title']) . '". It has existing reservations. Please manage or delete them first.';
             redirect('openoffice/rooms');
             return;
         }
-
 
         if ($this->objectModel->deleteObject($roomId)) {
             $_SESSION['admin_message'] = 'Room "' . htmlspecialchars($room['object_title']) . '" deleted successfully.';
@@ -313,54 +311,89 @@ class OpenOfficeController {
             'room' => $room,
             'breadcrumbs' => [
                 ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
-                ['label' => 'Manage Rooms', 'url' => 'openoffice/rooms'],
+                ['label' => 'Manage Rooms', 'url' => 'openoffice/rooms'], // Or just 'Open Office'
                 ['label' => 'Book Room']
             ]
         ];
 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+            
+            // Retrieve new form fields
+            $reservationDate = trim($_POST['reservation_date'] ?? '');
+            $reservationTimeSlot = trim($_POST['reservation_time_slot'] ?? '');
+            $reservationPurpose = trim($_POST['reservation_purpose'] ?? '');
+            
             $formData = [
-                'reservation_start_datetime' => trim($_POST['reservation_start_datetime'] ?? ''),
-                'reservation_end_datetime' => trim($_POST['reservation_end_datetime'] ?? ''),
-                'reservation_purpose' => trim($_POST['reservation_purpose'] ?? ''),
+                'reservation_date' => $reservationDate,
+                'reservation_time_slot' => $reservationTimeSlot,
+                'reservation_purpose' => $reservationPurpose,
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
 
-            if (empty($data['reservation_start_datetime'])) $data['errors']['start_err'] = 'Start date and time are required.';
-            if (empty($data['reservation_end_datetime'])) $data['errors']['end_err'] = 'End date and time are required.';
-            if (empty($data['reservation_purpose'])) $data['errors']['purpose_err'] = 'Purpose of reservation is required.';
+            // --- Validation for new fields ---
+            if (empty($data['reservation_date'])) {
+                $data['errors']['date_err'] = 'Reservation date is required.';
+            } elseif (new DateTime($data['reservation_date']) < new DateTime(date('Y-m-d'))) {
+                $data['errors']['date_err'] = 'Reservation date cannot be in the past.';
+            }
 
-            $startDateTime = null;
-            $endDateTime = null;
+            if (empty($data['reservation_time_slot'])) {
+                $data['errors']['time_slot_err'] = 'Time slot is required.';
+            }
 
-            if (!empty($data['reservation_start_datetime']) && !empty($data['reservation_end_datetime'])) {
-                try {
-                    $startDateTime = new DateTime($data['reservation_start_datetime']);
-                    $endDateTime = new DateTime($data['reservation_end_datetime']);
+            if (empty($data['reservation_purpose'])) {
+                $data['errors']['purpose_err'] = 'Purpose of reservation is required.';
+            }
 
-                    if ($startDateTime >= $endDateTime) {
-                        $data['errors']['end_err'] = 'End time must be after start time.';
+            // --- Parse time slot and construct full datetime strings ---
+            $fullStartDateTimeStr = null;
+            $fullEndDateTimeStr = null;
+
+            if (!empty($data['reservation_date']) && !empty($data['reservation_time_slot'])) {
+                $timeParts = explode('-', $data['reservation_time_slot']);
+                if (count($timeParts) === 2) {
+                    $startTime = trim($timeParts[0]); // e.g., "08:00"
+                    $endTime = trim($timeParts[1]);   // e.g., "09:00"
+
+                    $fullStartDateTimeStr = $data['reservation_date'] . ' ' . $startTime . ':00'; // Add seconds
+                    $fullEndDateTimeStr = $data['reservation_date'] . ' ' . $endTime . ':00';   // Add seconds
+                    
+                    try {
+                        $startDateTimeObj = new DateTime($fullStartDateTimeStr);
+                        $endDateTimeObj = new DateTime($fullEndDateTimeStr);
+
+                        if ($startDateTimeObj >= $endDateTimeObj) { // Should not happen with 1-hour slots but good check
+                            $data['errors']['time_slot_err'] = 'End time must be after start time (logic error).';
+                        }
+                        // Check if the constructed start time is in the past (considering time as well)
+                        if ($startDateTimeObj < new DateTime()) {
+                             $data['errors']['date_err'] = 'Reservation start time cannot be in the past.';
+                             // Also set time_slot_err to highlight the slot
+                             if (empty($data['errors']['time_slot_err'])) $data['errors']['time_slot_err'] = 'Selected time slot is in the past.';
+                        }
+
+                    } catch (Exception $e) {
+                        $data['errors']['time_slot_err'] = 'Invalid time slot format processed.';
+                        $fullStartDateTimeStr = null; // Invalidate for conflict check
+                        $fullEndDateTimeStr = null;
                     }
-                    if ($startDateTime < new DateTime()) {
-                         $data['errors']['start_err'] = 'Reservation cannot be in the past.';
-                    }
-                } catch (Exception $e) {
-                    $data['errors']['start_err'] = 'Invalid date/time format.';
+                } else {
+                    $data['errors']['time_slot_err'] = 'Invalid time slot selected.';
                 }
             }
             
             // Conflict Check for 'approved' reservations
-            if (empty($data['errors']) && $startDateTime && $endDateTime) {
+            if (empty($data['errors']) && $fullStartDateTimeStr && $fullEndDateTimeStr) {
                 $conflicts = $this->objectModel->getConflictingReservations(
                     $roomId, 
-                    $data['reservation_start_datetime'], 
-                    $data['reservation_end_datetime'],
-                    ['approved'] // Only check against already approved
+                    $fullStartDateTimeStr, 
+                    $fullEndDateTimeStr,
+                    ['approved'] 
                 );
                 if ($conflicts && count($conflicts) > 0) {
-                    $data['errors']['form_err'] = 'This time slot is already booked (approved reservation exists). Please choose a different time.';
+                    $data['errors']['form_err'] = 'This time slot is already booked (approved reservation exists). Please choose a different time or date.';
                 }
             }
 
@@ -373,8 +406,8 @@ class OpenOfficeController {
                     'object_status' => 'pending', 
                     'object_content' => $data['reservation_purpose'], 
                     'meta_fields' => [
-                        'reservation_start_datetime' => $data['reservation_start_datetime'],
-                        'reservation_end_datetime' => $data['reservation_end_datetime'],
+                        'reservation_start_datetime' => $fullStartDateTimeStr, // Use parsed full datetime
+                        'reservation_end_datetime' => $fullEndDateTimeStr,     // Use parsed full datetime
                         'reservation_user_id' => $_SESSION['user_id'] 
                     ]
                 ];
@@ -389,12 +422,17 @@ class OpenOfficeController {
                     $this->view('openoffice/reservation_form', $data);
                 }
             } else {
+                // Repopulate form with submitted values if there are errors
+                $data['reservation_date'] = $reservationDate;
+                $data['reservation_time_slot'] = $reservationTimeSlot;
+                $data['reservation_purpose'] = $reservationPurpose;
                 $this->view('openoffice/reservation_form', $data);
             }
         } else {
+            // Prepare empty form data for GET request
             $data = array_merge($commonData, [
-                'reservation_start_datetime' => '', 
-                'reservation_end_datetime' => '', 
+                'reservation_date' => date('Y-m-d'), // Default to today for new reservation
+                'reservation_time_slot' => '', 
                 'reservation_purpose' => '',
                 'errors' => []
             ]);
@@ -409,7 +447,7 @@ class OpenOfficeController {
         $userId = $_SESSION['user_id'];
         
         $myReservations = $this->objectModel->getObjectsByConditions('reservation', ['object_author' => $userId], [
-            'orderby' => 'object_date', // Consider ordering by start_datetime from meta if possible
+            'orderby' => 'object_date', 
             'orderdir' => 'DESC',
             'include_meta' => true
         ]);
@@ -472,7 +510,7 @@ class OpenOfficeController {
     public function approvereservation($reservationId = null) {
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to approve reservations.";
-            redirect('openoffice/roomreservations'); // Or dashboard
+            redirect('openoffice/roomreservations'); 
         }
         if ($reservationId === null) {
             $_SESSION['admin_message'] = 'No reservation ID specified for approval.';
@@ -487,24 +525,28 @@ class OpenOfficeController {
             $_SESSION['admin_message'] = 'Only pending reservations can be approved. This one is already ' . $reservationToApprove['object_status'] . '.';
         } else {
             $roomId = $reservationToApprove['object_parent'];
-            $startTime = $reservationToApprove['meta']['reservation_start_datetime'];
-            $endTime = $reservationToApprove['meta']['reservation_end_datetime'];
+            // These meta fields should now contain the full datetime strings
+            $startTime = $reservationToApprove['meta']['reservation_start_datetime'] ?? null;
+            $endTime = $reservationToApprove['meta']['reservation_end_datetime'] ?? null;
 
-            // 1. Check for conflicts with already 'approved' reservations
+            if (!$startTime || !$endTime) {
+                 $_SESSION['admin_message'] = 'Error: Reservation is missing start or end time data.';
+                 redirect('openoffice/roomreservations');
+                 return;
+            }
+
             $approvedConflicts = $this->objectModel->getConflictingReservations(
-                $roomId, $startTime, $endTime, ['approved'], $reservationId // Exclude current one if it were somehow approved
+                $roomId, $startTime, $endTime, ['approved'], $reservationId 
             );
 
             if ($approvedConflicts && count($approvedConflicts) > 0) {
                 $_SESSION['admin_message'] = 'Error: Cannot approve. This time slot conflicts with an existing approved reservation.';
             } else {
-                // 2. Approve the current reservation
                 if ($this->objectModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                     $_SESSION['admin_message'] = 'Reservation approved successfully.';
                     
-                    // 3. Find and deny overlapping 'pending' reservations for the same room
                     $overlappingPending = $this->objectModel->getConflictingReservations(
-                        $roomId, $startTime, $endTime, ['pending'], $reservationId // Exclude the one just approved
+                        $roomId, $startTime, $endTime, ['pending'], $reservationId 
                     );
 
                     if ($overlappingPending) {
@@ -512,7 +554,6 @@ class OpenOfficeController {
                         foreach ($overlappingPending as $pendingConflict) {
                             if ($this->objectModel->updateObject($pendingConflict['object_id'], ['object_status' => 'denied'])) {
                                 $deniedCount++;
-                                // Optionally log or notify user of automatic denial
                                 error_log("Reservation ID {$pendingConflict['object_id']} automatically denied due to approval of {$reservationId}.");
                             }
                         }
@@ -545,7 +586,7 @@ class OpenOfficeController {
 
         if (!$reservation || $reservation['object_type'] !== 'reservation') {
             $_SESSION['admin_message'] = 'Reservation not found for denial.';
-        } elseif (!in_array($reservation['object_status'], ['pending', 'approved'])) { // Can deny pending or revoke approval
+        } elseif (!in_array($reservation['object_status'], ['pending', 'approved'])) { 
             $_SESSION['admin_message'] = 'Only pending or approved reservations can be denied/revoked. This one is ' . $reservation['object_status'] . '.';
         } else {
             if ($this->objectModel->updateObject($reservationId, ['object_status' => 'denied'])) {
@@ -556,7 +597,6 @@ class OpenOfficeController {
         }
         redirect('openoffice/roomreservations');
     }
-
 
     /**
      * Load a view file for the openoffice area.

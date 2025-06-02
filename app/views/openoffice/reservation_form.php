@@ -5,12 +5,29 @@
 // - $room (array) - Details of the room being booked
 // - $breadcrumbs (array)
 // - $errors (array) - Validation errors
-// - $reservation_start_datetime (string) - Submitted start time (for repopulating form)
-// - $reservation_end_datetime (string) - Submitted end time
+// - $reservation_date (string) - Submitted date (for repopulating form)
+// - $reservation_time_slot (string) - Submitted time slot
 // - $reservation_purpose (string) - Submitted purpose
 
 // Determine the form action URL
 $formAction = BASE_URL . 'openoffice/createreservation/' . ($room['object_id'] ?? '');
+
+// Define available time slots (1-hour intervals from 8 AM to 5 PM)
+$timeSlots = [];
+for ($hour = 8; $hour < 17; $hour++) { // 8 AM to 4 PM start times, for slots ending by 5 PM
+    $startTime = sprintf("%02d:00", $hour);
+    $endTimeHour = $hour + 1;
+    $endTime = sprintf("%02d:00", $endTimeHour);
+    
+    // Format for display (e.g., "8:00 AM - 9:00 AM")
+    $displayStartTime = date("g:i A", strtotime($startTime));
+    $displayEndTime = date("g:i A", strtotime($endTime));
+    $displaySlot = $displayStartTime . ' - ' . $displayEndTime;
+
+    // Value for the option (e.g., "08:00-09:00")
+    $valueSlot = $startTime . '-' . $endTime;
+    $timeSlots[$valueSlot] = $displaySlot;
+}
 
 // Include header
 require_once __DIR__ . '/../layouts/header.php';
@@ -34,11 +51,9 @@ require_once __DIR__ . '/../layouts/header.php';
                 <h5 class="mb-3">Reservation Details</h5>
 
                 <?php
-                // Display general form errors if any
                 if (!empty($errors['form_err'])) {
                     echo '<div class="alert alert-danger text-center">' . htmlspecialchars($errors['form_err']) . '</div>';
                 }
-                // Display success/error messages from session (if any, though typically handled by redirect)
                 if (isset($_SESSION['message'])) {
                     echo '<div class="alert alert-success">' . htmlspecialchars($_SESSION['message']) . '</div>';
                     unset($_SESSION['message']);
@@ -52,22 +67,29 @@ require_once __DIR__ . '/../layouts/header.php';
                 <form action="<?php echo $formAction; ?>" method="POST">
                     
                     <div class="mb-3">
-                        <label for="reservation_start_datetime" class="form-label">Start Date & Time <span class="text-danger">*</span></label>
-                        <input type="datetime-local" name="reservation_start_datetime" id="reservation_start_datetime" 
-                               class="form-control <?php echo (!empty($errors['start_err'])) ? 'is-invalid' : ''; ?>"
-                               value="<?php echo htmlspecialchars($reservation_start_datetime ?? ''); ?>" 
-                               step="1800" required> <?php if (!empty($errors['start_err'])): ?>
-                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['start_err']); ?></div>
+                        <label for="reservation_date" class="form-label">Date <span class="text-danger">*</span></label>
+                        <input type="date" name="reservation_date" id="reservation_date" 
+                               class="form-control <?php echo (!empty($errors['date_err'])) ? 'is-invalid' : ''; ?>"
+                               value="<?php echo htmlspecialchars($reservation_date ?? date('Y-m-d')); ?>" 
+                               min="<?php echo date('Y-m-d'); ?>" required>
+                        <?php if (!empty($errors['date_err'])): ?>
+                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['date_err']); ?></div>
                         <?php endif; ?>
                     </div>
 
                     <div class="mb-3">
-                        <label for="reservation_end_datetime" class="form-label">End Date & Time <span class="text-danger">*</span></label>
-                        <input type="datetime-local" name="reservation_end_datetime" id="reservation_end_datetime"
-                               class="form-control <?php echo (!empty($errors['end_err'])) ? 'is-invalid' : ''; ?>"
-                               value="<?php echo htmlspecialchars($reservation_end_datetime ?? ''); ?>" 
-                               step="1800" required> <?php if (!empty($errors['end_err'])): ?>
-                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['end_err']); ?></div>
+                        <label for="reservation_time_slot" class="form-label">Time Slot <span class="text-danger">*</span></label>
+                        <select name="reservation_time_slot" id="reservation_time_slot" 
+                                class="form-select <?php echo (!empty($errors['time_slot_err'])) ? 'is-invalid' : ''; ?>" required>
+                            <option value="">-- Select a Time Slot --</option>
+                            <?php foreach ($timeSlots as $value => $display): ?>
+                                <option value="<?php echo htmlspecialchars($value); ?>" <?php echo (isset($reservation_time_slot) && $reservation_time_slot == $value) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($display); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if (!empty($errors['time_slot_err'])): ?>
+                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['time_slot_err']); ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -83,7 +105,7 @@ require_once __DIR__ . '/../layouts/header.php';
                     
                     <p class="text-muted small">
                         Your reservation request will be submitted for approval. You can view the status of your requests under "My Reservations".
-                        Time selections are in 30-minute intervals.
+                        Reservations are for 1-hour slots.
                     </p>
 
                     <div class="d-grid gap-2 mt-4">
@@ -95,6 +117,12 @@ require_once __DIR__ . '/../layouts/header.php';
         </div>
     </div>
 </div>
+
+<?php
+// No client-side JavaScript needed for this specific time slot implementation, 
+// as the slots are predefined. The previous JS for adjusting datetime-local is removed.
+// Server-side validation will be crucial.
+?>
 
 <?php
 // Include footer
