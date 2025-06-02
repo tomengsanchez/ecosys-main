@@ -1,6 +1,55 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.17.0 - Email Notifications for Room Reservations (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+Config.php Enhancements:
+Added email configuration constants: DEFAULT_SITE_EMAIL_FROM, DEFAULT_ADMIN_EMAIL_NOTIFICATIONS, DEFAULT_EMAIL_NOTIFICATIONS_ENABLED.
+Created send_system_email($to, $subject, $message, $additional_headers = null) helper function:
+Checks a global 'site_email_notifications_enabled' option (from database via OptionModel) before sending.
+Uses 'site_name' and 'site_email_from' options for email construction.
+Sets basic headers (From, Reply-To, Content-Type: text/plain).
+Uses PHP's mail() function and includes basic logging.
+
+Admin Site Settings (AdminController.php & site_settings.php view):
+AdminController::siteSettings():
+Added new manageable options for email configuration:
+site_email_notifications_enabled (Select: On/Off).
+site_email_from (Input: email, for system "From" address).
+site_admin_email_notifications (Input: email, for admin-specific notifications).
+Added basic email validation for email input fields.
+app/views/admin/site_settings.php:
+Updated to render the new email configuration fields with appropriate input types and error message display.
+
+OpenOfficeController.php - Email Integration:
+Instantiated OptionModel to access email settings.
+Integrated send_system_email() calls into the reservation workflow:
+createreservation():
+Notifies the user that their request is pending.
+Notifies the admin (using 'site_admin_email_notifications' email) of the new pending request.
+approvereservation():
+Notifies the user that their reservation has been approved.
+If conflicting pending reservations are auto-denied, notifies the respective users of the denial and the reason (conflict with newly approved booking).
+denyreservation():
+Notifies the user that their reservation request has been denied or revoked by an administrator.
+cancelreservation():
+Notifies the admin (using 'site_admin_email_notifications' email) that a user has cancelled their pending reservation.
+All email messages include relevant details (room name, user name, times, purpose) and use format_datetime_for_display().
+
+Key Changes & Fixes:
+Implemented a system for sending email notifications for various room reservation events.
+Made email sending configurable through admin site settings (enable/disable, from address, admin recipient).
+Improved user and admin communication regarding reservation status changes.
+
+To-Do / Next Steps (Examples for Email Feature):
+Implement more robust email sending using a library like PHPMailer for SMTP support, HTML emails, and better error handling.
+Allow customization of email templates.
+Add options for users to manage their notification preferences.
+Extend email notifications to other modules (e.g., user registration, IT requests).
+
 Version 0.16.0 - Server-Side Handling for 1-Hour Time Slot Reservations (2025-06-02)
 Date: 2025-06-02
 
@@ -20,9 +69,6 @@ If validation errors occur, the submitted reservation_date and reservation_time_
 Key Changes & Fixes:
 Enabled the server-side logic to support the new 1-hour time slot selection UI for room reservations.
 Ensured that date and time slot selections are correctly processed and stored for conflict checking and record-keeping.
-
-To-Do / Next Steps:
-Consider adding more sophisticated UI for time slot selection, perhaps disabling already booked or past slots directly in the dropdown based on the selected date (would require AJAX or more complex PHP in the view).
 
 Version 0.15.0 - Reservation Form Time Intervals (UI Update to 1-Hour Slots & 00/30 Min Enforcement) (2025-06-02)
 Date: 2025-06-02
@@ -47,48 +93,19 @@ Date: 2025-06-02
 Features Implemented:
 
 Config.php Enhancements:
-Set a default PHP timezone using date_default_timezone_set().
-Defined DEFAULT_TIME_FORMAT constant.
-Added get_site_time_format() helper function:
-Retrieves 'site_time_format' option from the database (via OptionModel).
-Falls back to DEFAULT_TIME_FORMAT if the option is not set.
-Includes static caching for performance.
-Added format_datetime_for_display($datetimeString, $customFormat = null) helper function:
-Takes a datetime string and an optional custom format.
-Formats the string using the site's configured time format (via get_site_time_format()) or the custom format if provided.
-Includes basic error handling for invalid date strings.
+Set a default PHP timezone. Defined DEFAULT_TIME_FORMAT. Added get_site_time_format() and format_datetime_for_display() helper functions.
 
 Admin Site Settings (AdminController.php & site_settings.php view):
-AdminController::siteSettings():
-Added 'site_time_format' to the $manageableOptions array.
-Defined a list of common PHP date/time format strings (e.g., 'Y-m-d H:i:s', 'm/d/Y h:i A') as selectable options, with examples generated by date().
-The default value for this setting uses DEFAULT_TIME_FORMAT from config.php.
-app/views/admin/site_settings.php:
-Updated to render a dropdown menu for the 'Site Time Format' setting, populated with the predefined formats and their examples.
+Added 'site_time_format' to manageable options with a dropdown of common PHP date formats.
 
 View Updates for Consistent Time Display:
-The format_datetime_for_display() helper function was applied to all relevant views to ensure consistent time formatting:
-app/views/admin/users.php: Formatted user_registered.
-app/views/admin/roles_list.php: Formatted created_at.
-app/views/admin/departments.php: Formatted created_at.
-app/views/openoffice/rooms_list.php: Formatted object_modified.
-app/views/openoffice/reservations_list.php (Admin): Formatted reservation_start_datetime, reservation_end_datetime, and object_date (requested on).
-app/views/openoffice/my_reservations_list.php (User): Formatted reservation_start_datetime, reservation_end_datetime, and object_date (requested on).
+Applied format_datetime_for_display() to user_registered, created_at, object_modified, reservation start/end times, and request dates across admin and Open Office views.
 
 Dashboard Calendar (DashboardController.php & dashboard/index.php view):
-DashboardController.php:
-Modified to use format_datetime_for_display() to pre-format formattedStartTime and formattedEndTime for calendar event tooltips, ensuring they respect the site setting.
-app/views/dashboard/index.php:
-The FullCalendar eventDidMount function now uses these pre-formatted formattedStartTime and formattedEndTime from extendedProps for the tooltip display.
+Updated to use format_datetime_for_display() for calendar event tooltips.
 
 Key Changes & Fixes:
-Introduced a global site setting for administrators to control how dates and times are displayed.
-Ensured consistent date and time formatting across various admin and user-facing lists.
-Updated dashboard calendar tooltips to reflect the chosen site time format.
-
-To-Do / Next Steps (Examples for Time Formatting):
-Consider adding a 'Site Timezone' setting in the admin panel.
-Ensure all date/time inputs (e.g., reservation form) are handled correctly with respect to timezones if they become configurable.
+Introduced a global site setting for time display. Ensured consistent formatting.
 
 Version 0.13.0 - Room Reservation Conflict Resolution (2025-06-02)
 Date: 2025-06-02
@@ -96,290 +113,99 @@ Date: 2025-06-02
 Features Implemented:
 
 ObjectModel.php Enhancements:
-Added getConflictingReservations($roomId, $startTime, $endTime, $statuses = ['approved'], $excludeReservationId = null) method:
-Constructs a SQL query to find reservations in a specific room that overlap with a given time slot and have specified statuses.
-The core conflict logic is: (existing_start < new_end) AND (existing_end > new_start).
-Allows excluding a specific reservation ID from the check.
-Returns an array of conflicting reservation objects or false on error.
+Added getConflictingReservations() method for finding overlapping reservations.
 
 OpenOfficeController.php Updates for Conflict Handling:
-createreservation() method:
-Before creating a new 'pending' reservation, it now calls getConflictingReservations() to check if the requested time slot for the room conflicts with any existing 'approved' reservations.
-If a conflict with an 'approved' reservation is found, an error message is displayed, and the new reservation is not created.
-approvereservation() method:
-Before changing a 'pending' reservation to 'approved', it first checks for conflicts with other 'approved' reservations for the same room and time slot. If a conflict exists, the approval is blocked.
-If no conflicts with other 'approved' reservations exist and the current reservation is successfully approved:
-It then calls getConflictingReservations() again to find any 'pending' reservations for the same room that overlap with the newly approved time slot.
-All such overlapping 'pending' reservations are automatically updated to 'denied' status.
-A message is appended to the admin's success notification, indicating how many pending requests were automatically denied.
-deleteRoom() method:
-Added a check to prevent deletion of a room if it has any existing reservations.
+createreservation() now checks for conflicts with 'approved' reservations.
+approvereservation() now checks for conflicts with other 'approved' slots and auto-denies overlapping 'pending' requests.
+deleteRoom() now prevents deletion if a room has existing reservations.
 
 Key Changes & Fixes:
-Implemented a system to prevent double-booking of rooms for approved reservations.
-Automated the denial of pending requests that conflict with a newly approved reservation.
-Improved data integrity by preventing deletion of rooms with active or pending reservations.
+Implemented double-booking prevention and auto-denial of conflicting pending requests.
 
 Version 0.12.0 - Dashboard Calendar for Room Reservations (2025-06-02)
 Date: 2025-06-02
 
 Features Implemented:
 
-Layout Updates (Header & Footer):
-app/views/layouts/header.php:
-Added FullCalendar library (JS and CSS) via CDN.
-app/views/layouts/footer.php:
-No changes needed for FullCalendar's JS as the global bundle was included in the header.
-
-DashboardController.php (index() method):
-Instantiated ObjectModel and UserModel.
-Fetched room reservations with 'pending' or 'approved' status using a new getObjectsByConditions() method in ObjectModel.
-Processed reservations into a JSON array suitable for FullCalendar events. Each event includes:
-title: "Room Name (User Name)"
-start: Reservation start datetime.
-end: Reservation end datetime.
-color: Green for 'approved', Yellow for 'pending'.
-extendedProps: Additional data like purpose, status, roomName, userName for tooltips.
-Passed the JSON encoded event data to the dashboard view.
-
-ObjectModel.php:
-Added new method getObjectsByConditions($objectType, array $conditions, array $args):
-Allows fetching objects based on specific field conditions (e.g., object_status IN ('pending', 'approved')).
-Supports multiple values for a condition (generates SQL IN clause).
-Includes standard arguments for ordering and metadata inclusion.
-
-Dashboard View (app/views/dashboard/index.php):
-Added a <div> with id="reservationCalendar" to serve as the calendar container.
-Included JavaScript to initialize FullCalendar:
-Sets initialView to dayGridMonth.
-Configures headerToolbar for navigation and view switching.
-Loads events from the JSON data provided by the controller.
-Implements eventDidMount to add Bootstrap tooltips on event hover, showing reservation details (Room, User, Status, Purpose).
-Added a simple legend below the calendar for event colors (Approved, Pending).
+Layout Updates: Added FullCalendar library.
+DashboardController.php: Fetched and processed reservations for calendar.
+ObjectModel.php: Added getObjectsByConditions().
+Dashboard View: Added calendar display with tooltips.
 
 Key Changes & Fixes:
 Enhanced dashboard with a visual calendar for room reservations.
-Improved data fetching in ObjectModel with a more flexible querying method.
-
-To-Do / Next Steps (Examples for Calendar):
-Make calendar events clickable to view/edit reservation details.
-Implement filtering options for the calendar (e.g., by room, by status).
-Integrate other types of requests (IT, Service) into the calendar if desired.
-Refine styling and responsiveness of the calendar.
 
 Version 0.11.0 - Room Reservation System (Basic) (2025-06-02)
 Date: 2025-06-02
 
 Features Implemented:
-
-Config Updates:
-Ensured 'MANAGE_ROOMS' capability is present for clarity.
-
-OpenOfficeController.php - Reservation Logic:
-Instantiated UserModel to fetch user details for reservations.
-Added roomreservations(): Displays a list of all room reservations for users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' capability. Fetches associated room names and user display names.
-Added createreservation($roomId): Allows any logged-in user to submit a reservation request for an 'available' room. Reservations are created with 'pending' status and linked to the room via object_parent. Basic validation for dates and purpose.
-Added myreservations(): Allows logged-in users to view a list of their own reservation requests and their statuses.
-Added cancelreservation($reservationId): Allows users to cancel their own 'pending' reservations.
-Added approvereservation($reservationId): Allows users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' to approve a 'pending' reservation.
-Added denyreservation($reservationId): Allows users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' to deny a 'pending' reservation.
-
-New Views for Reservations:
-app/views/openoffice/reservation_form.php: Form for users to create a new room reservation request. Displays room details and includes fields for start/end datetime and purpose.
-app/views/openoffice/reservations_list.php: Admin view to list all room reservations with details (room, user, purpose, times, status) and action buttons (Approve, Deny, Revoke).
-app/views/openoffice/my_reservations_list.php: User view to list their own reservations with status and an option to cancel pending requests.
-
-Layout and View Updates:
-app/views/layouts/header.php:
-Added "Room Reservations (Admin)" link to "Open Office" dropdown for users with 'MANAGE_OPEN_OFFICE_RESERVATIONS' capability.
-Added "My Reservations" link to "Open Office" dropdown for all logged-in users.
-Included Font Awesome icons for navigation links.
-Adjusted isActive helper and navbar styling for better UX.
-app/views/openoffice/rooms_list.php:
-Added a "Book" button for each 'available' room, linking to the createreservation action.
-Conditional display of admin-specific columns (ID, Last Modified) and actions (Edit, Delete room) based on 'MANAGE_ROOMS' capability.
-Conditional display of "Add New Room" button based on 'MANAGE_ROOMS' capability.
-
-Object Model Usage:
-Utilized the existing ObjectModel for all CRUD operations related to 'reservation' objects.
-Reservations are stored as objects with object_type = 'reservation'.
-The object_parent field of a reservation object stores the object_id of the reserved room.
-Reservation details (start/end times, purpose) are stored in object_content and objectmeta.
-
-To-Do / Next Steps (Examples for Reservation System):
-Implement robust conflict checking for reservations to prevent double bookings.
-Add email notifications for reservation status changes (pending, approved, denied, cancelled).
-Implement a calendar view for room availability and existing bookings.
-Allow editing of pending reservations by users or admins.
-More detailed user feedback and error handling.
+Config Updates, OpenOfficeController.php (Reservation Logic), New Views for Reservations, Layout and View Updates, Object Model Usage for reservations.
 
 Version 0.10.0 - Dynamic Role Management (CRUD) (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-Database Schema for Roles:
-
-Created roles table (role_id, role_key, role_name, role_description, is_system_role, created_at).
-
-Seeded initial roles ('admin', 'editor', 'user'), with 'admin' as a system role.
-
-RoleModel.php:
-
-Created to handle CRUD operations for the roles table.
-
-Methods include createRole(), getRoleById(), getRoleByKey(), getAllRoles(), updateRole(), deleteRole().
-
-deleteRole() handles deleting associated permissions and reassigning users to a default role.
-
-Prevents deletion/modification of system roles (e.g., 'admin' cannot be made non-system or deleted).
-
-config.php Updates:
-
-Removed hardcoded DEFINED_ROLES constant.
-
-getDefinedRoles() function now fetches roles (key-name pairs) from the database using RoleModel.
-
-Added 'MANAGE_ROLES' to the CAPABILITIES constant and seeded it for the 'admin' role in role_permissions.
-
-AdminController.php - Role CRUD Actions:
-
-Instantiated RoleModel.
-
-Added listRoles() action to display all roles.
-
-Added addRole() action for creating new roles (with form display and processing, validation for unique role_key).
-
-Added editRole() action for updating existing roles (role_key not editable, safeguards for system roles).
-
-Added deleteRole() action with safeguards for system roles.
-
-All new role management actions are protected by the MANAGE_ROLES capability.
-
-Admin Views for Role Management:
-
-app/views/admin/roles_list.php: View to list roles with details and action buttons.
-
-app/views/admin/role_form.php: Reusable form for adding and editing roles.
-
-UI Updates:
-
-app/views/admin/index.php: Added a card/link for "Manage Roles".
-
-app/views/layouts/header.php: Added "Manage Roles" to the "Admin" dropdown menu.
-
-user_form.php and role_access_settings.php now use getDefinedRoles() which fetches from DB.
-
-Key Changes & Fixes:
-
-Roles are now fully dynamic and managed via the database and admin UI.
-
-Enhanced the role system with the ability to create, edit, and delete roles (with protections for system roles).
-
-To-Do / Next Steps (Examples for Role Management):
-
-When deleting a role, provide an option for the admin to choose which role users should be reassigned to, instead of hardcoding 'user'.
-
-More robust UI for indicating system roles and their non-deletable/non-modifiable nature.
+Database Schema for Roles, RoleModel.php, config.php Updates, AdminController.php (Role CRUD Actions), Admin Views for Role Management, UI Updates for role management.
 
 Version 0.9.1 - Restricted Admin Role Permissions Editing (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-AdminController.php - roleAccessSettings() Safeguard:
-
-Modifications to the 'admin' role's capabilities are skipped in POST processing.
-
-app/views/admin/role_access_settings.php - UI Restriction for 'Admin' Role:
-
-Checkboxes for 'admin' role capabilities are disabled and always checked.
-
-Key Changes & Fixes:
-
-Enhanced safeguards for the 'admin' role's permissions.
+AdminController.php - roleAccessSettings() Safeguard, app/views/admin/role_access_settings.php - UI Restriction for 'Admin' Role.
 
 Version 0.9.0 - Editable Role Permissions (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-Database-driven role-permission mapping (role_permissions table).
-
-RolePermissionModel.php for managing these mappings.
-
-config.php updated to use database for userHasCapability().
-
-AdminController::roleAccessSettings() updated to save changes.
-
-role_access_settings.php view made into an editable form.
+Database-driven role-permission mapping, RolePermissionModel.php, config.php updated for userHasCapability(), AdminController::roleAccessSettings() updated to save changes, role_access_settings.php view made into an editable form.
 
 Version 0.8.0 - Role Access Settings Display (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-Capability Definitions (config.php).
-
-AdminController.php capability checks & roleAccessSettings() (read-only).
-
-role_access_settings.php view (read-only).
-
-UI Links for Role Access Settings.
+Capability Definitions (config.php), AdminController.php capability checks & roleAccessSettings() (read-only), role_access_settings.php view (read-only), UI Links for Role Access Settings.
 
 Version 0.7.0 - Site Settings Module (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
 OptionModel.php, AdminController::siteSettings(), site_settings.php view, UI links.
 
 Version 0.6.0 - Breadcrumb Navigation (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
 Breadcrumb helper function and integration.
 
 Version 0.5.0 - Department Module & User Assignment (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-Database schema & DepartmentModel.php for departments.
-
-Controller & Model updates for department management and user assignment.
-
-Admin views for department CRUD and user-department assignment.
+Database schema & DepartmentModel.php for departments, Controller & Model updates for department management and user assignment, Admin views for department CRUD and user-department assignment.
 
 Version 0.4.0 - Role-Based Access Control (RBAC) - Basic (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
-user_role column in users table.
-
-Model, Controller, and View updates for basic role management.
+user_role column in users table, Model, Controller, and View updates for basic role management.
 
 Version 0.3.0 - Admin User Management (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
 Full CRUD for users in Admin Panel.
 
 Version 0.2.0 - Administrator Module (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
 Basic AdminController and admin dashboard view.
 
 Version 0.1.0 - Initial Setup & Login System (2025-05-30)
 Date: 2025-05-30
 
 Features Implemented:
-
 Core MVC structure, DB connection, routing, login system, basic dashboard, Bootstrap & jQuery.
 
 Version X.Y.Z (Future Version)

@@ -1,6 +1,6 @@
 <?php
 /**
- * Database Configuration, Session Management, and Role/Capability Definitions
+ * Database Configuration, Session Management, Role/Capability, and Email Definitions
  */
 
 // ** MySQL settings ** //
@@ -13,12 +13,17 @@ define('DB_COLLATE', '');
 
 define('BASE_URL', '/mainsystem/'); 
 
-// Default Timezone (PHP requires this to be set for date/time functions)
-// You might want to make this a site setting as well in the future.
-date_default_timezone_set('Asia/Manila'); // Example: Philippines timezone
+// Default Timezone
+date_default_timezone_set('Asia/Manila'); 
 
 // Default Time Format if not set in options
-define('DEFAULT_TIME_FORMAT', 'Y-m-d H:i'); // Example: 2025-06-02 15:30
+define('DEFAULT_TIME_FORMAT', 'Y-m-d H:i');
+
+// --- Email Configuration Defaults ---
+define('DEFAULT_SITE_EMAIL_FROM', 'noreply@example.com'); // Default "From" address for system emails
+define('DEFAULT_ADMIN_EMAIL_NOTIFICATIONS', 'admin@example.com'); // Default email to send admin notifications
+define('DEFAULT_EMAIL_NOTIFICATIONS_ENABLED', 'on'); // Master switch: 'on' or 'off'
+
 
 $pdo = null; 
 $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
@@ -73,12 +78,6 @@ function generateBreadcrumbs($breadcrumbs = []) {
     return $html;
 }
 
-/**
- * Get the site-wide configured time format.
- *
- * @global PDO $pdo
- * @return string The time format string.
- */
 function get_site_time_format() {
     global $pdo;
     static $siteTimeFormat = null;
@@ -108,30 +107,80 @@ function get_site_time_format() {
     return $siteTimeFormat;
 }
 
-/**
- * Format a datetime string for display using the site's configured time format.
- *
- * @param string $datetimeString The datetime string to format (e.g., from database).
- * @param string|null $customFormat Optional custom format string to override site setting.
- * @return string The formatted datetime string, or the original string if input is invalid.
- */
 function format_datetime_for_display($datetimeString, $customFormat = null) {
     if (empty($datetimeString) || $datetimeString === '0000-00-00 00:00:00') {
-        return 'N/A'; // Or an empty string, or however you want to handle invalid/empty dates
+        return 'N/A'; 
     }
     try {
         $formatToUse = $customFormat ?: get_site_time_format();
-        $date = new DateTime($datetimeString); // Assumes $datetimeString is in a format DateTime can parse
+        $date = new DateTime($datetimeString); 
         return $date->format($formatToUse);
     } catch (Exception $e) {
         error_log("Error formatting date '{$datetimeString}': " . $e->getMessage());
-        return htmlspecialchars($datetimeString); // Return original on error, safely escaped
+        return htmlspecialchars($datetimeString); 
+    }
+}
+
+/**
+ * Send a system email.
+ *
+ * @global PDO $pdo
+ * @param string $to The recipient's email address.
+ * @param string $subject The email subject.
+ * @param string $message The email message body.
+ * @param array|null $additional_headers Optional additional headers.
+ * @return bool True if the email was accepted for delivery, false otherwise.
+ */
+function send_system_email($to, $subject, $message, $additional_headers = null) {
+    global $pdo;
+
+    if (!class_exists('OptionModel')) {
+        $modelPath = __DIR__ . '/app/models/OptionModel.php';
+        if (file_exists($modelPath)) require_once $modelPath;
+        else { 
+            error_log("OptionModel class not found in send_system_email(). Email not sent.");
+            return false;
+        }
+    }
+    $optionModel = new OptionModel($pdo);
+
+    $notificationsEnabled = $optionModel->getOption('site_email_notifications_enabled', DEFAULT_EMAIL_NOTIFICATIONS_ENABLED);
+    if (strtolower($notificationsEnabled) !== 'on') {
+        error_log("Email notifications are disabled. Email to {$to} with subject '{$subject}' not sent.");
+        return false; // Master switch is off
+    }
+
+    $siteName = $optionModel->getOption('site_name', 'Mainsystem'); // Get site name for subject/body
+    $fromEmail = $optionModel->getOption('site_email_from', DEFAULT_SITE_EMAIL_FROM);
+
+    $headers = "From: {$siteName} <{$fromEmail}>\r\n";
+    $headers .= "Reply-To: {$fromEmail}\r\n";
+    $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n"; // Plain text email
+
+    if (is_array($additional_headers)) {
+        foreach ($additional_headers as $header) {
+            $headers .= $header . "\r\n";
+        }
+    }
+
+    // Add a simple footer to the message
+    $fullMessage = $message . "\r\n\r\n--\r\nThis is an automated message from " . $siteName . ".\r\n" . BASE_URL;
+
+    $subjectWithSiteName = "[{$siteName}] " . $subject;
+
+    if (mail($to, $subjectWithSiteName, $fullMessage, $headers)) {
+        error_log("Email successfully sent to {$to} with subject '{$subjectWithSiteName}'.");
+        return true;
+    } else {
+        error_log("Failed to send email to {$to} with subject '{$subjectWithSiteName}'. Check mail server configuration.");
+        return false;
     }
 }
 
 
 // --- Role and Capability Management ---
-
 define('CAPABILITIES', [
     'ACCESS_ADMIN_PANEL' => 'Access Admin Panel',
     'MANAGE_USERS' => 'Manage Users (Add, Edit, Delete)',

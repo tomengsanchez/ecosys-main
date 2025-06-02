@@ -448,11 +448,10 @@ class AdminController {
             redirect('admin');
         }
         
-        // Define manageable options with their labels, defaults, types, and options for select
         $manageableOptions = [
             'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
             'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
-            'admin_email' => ['label' => 'Administrator Email', 'default' => 'admin@example.com', 'type' => 'email'], 
+            'admin_email' => ['label' => 'Administrator Email (General)', 'default' => 'admin@example.com', 'type' => 'email', 'help' => 'Primary contact for site administration.'], 
             'items_per_page' => ['label' => 'Items Per Page', 'default' => 10, 'type' => 'number', 'help' => 'Number of items to show on paginated lists.'],
             'site_description' => ['label' => 'Site Description', 'default' => '', 'type' => 'textarea'],
             'maintenance_mode' => [
@@ -461,20 +460,40 @@ class AdminController {
                 'type' => 'select', 
                 'options' => ['on' => 'On', 'off' => 'Off']
             ],
-            'site_time_format' => [ // New Time Format Setting
+            'site_time_format' => [ 
                 'label' => 'Site Time Format',
-                'default' => DEFAULT_TIME_FORMAT, // Use default from config.php
+                'default' => DEFAULT_TIME_FORMAT, 
                 'type' => 'select',
-                'options' => [ // Common PHP date format strings
-                    'Y-m-d H:i:s' => date('Y-m-d H:i:s') . ' (YYYY-MM-DD HH:MM:SS - 24hr)', // Example: 2023-10-27 14:35:00
-                    'Y-m-d H:i'   => date('Y-m-d H:i') . ' (YYYY-MM-DD HH:MM - 24hr)',   // Example: 2023-10-27 14:35
-                    'd/m/Y H:i'   => date('d/m/Y H:i') . ' (DD/MM/YYYY HH:MM - 24hr)',   // Example: 27/10/2023 14:35
-                    'm/d/Y h:i A' => date('m/d/Y h:i A') . ' (MM/DD/YYYY hh:mm AM/PM)',  // Example: 10/27/2023 02:35 PM
-                    'F j, Y, g:i a' => date('F j, Y, g:i a') . ' (Month D, YYYY, h:mm am/pm)', // Example: October 27, 2023, 2:35 pm
-                    'g:i a'         => date('g:i a') . ' (hh:mm am/pm - Time only)',          // Example: 2:35 pm
-                    'H:i'           => date('H:i') . ' (HH:MM - 24hr Time only)'             // Example: 14:35
+                'options' => [ 
+                    'Y-m-d H:i:s' => date('Y-m-d H:i:s') . ' (YYYY-MM-DD HH:MM:SS - 24hr)', 
+                    'Y-m-d H:i'   => date('Y-m-d H:i') . ' (YYYY-MM-DD HH:MM - 24hr)',   
+                    'd/m/Y H:i'   => date('d/m/Y H:i') . ' (DD/MM/YYYY HH:MM - 24hr)',   
+                    'm/d/Y h:i A' => date('m/d/Y h:i A') . ' (MM/DD/YYYY hh:mm AM/PM)',  
+                    'F j, Y, g:i a' => date('F j, Y, g:i a') . ' (Month D, YYYY, h:mm am/pm)', 
+                    'g:i a'         => date('g:i a') . ' (hh:mm am/pm - Time only)',          
+                    'H:i'           => date('H:i') . ' (HH:MM - 24hr Time only)'             
                 ],
                 'help' => 'Select the default time format for displaying dates and times across the site.'
+            ],
+            // --- New Email Settings ---
+            'site_email_notifications_enabled' => [
+                'label' => 'Enable Email Notifications',
+                'default' => DEFAULT_EMAIL_NOTIFICATIONS_ENABLED, // From config.php
+                'type' => 'select',
+                'options' => ['on' => 'On (Enabled)', 'off' => 'Off (Disabled)'],
+                'help' => 'Master switch to enable or disable all system email notifications.'
+            ],
+            'site_email_from' => [
+                'label' => 'System "From" Email Address',
+                'default' => DEFAULT_SITE_EMAIL_FROM, // From config.php
+                'type' => 'email',
+                'help' => 'The email address system notifications will appear to be sent from.'
+            ],
+            'site_admin_email_notifications' => [
+                'label' => 'Admin Notification Email',
+                'default' => DEFAULT_ADMIN_EMAIL_NOTIFICATIONS, // From config.php
+                'type' => 'email',
+                'help' => 'Email address where notifications for administrators (e.g., new user registration, new reservation requests) are sent.'
             ]
         ];
         $optionKeys = array_keys($manageableOptions);
@@ -482,30 +501,50 @@ class AdminController {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $settingsToSave = [];
+            $errors = [];
+
             foreach ($optionKeys as $key) {
                 if (isset($_POST[$key])) {
-                    $settingsToSave[$key] = trim($_POST[$key]);
+                    $value = trim($_POST[$key]);
+                    // Basic validation for email fields
+                    if (($key === 'site_email_from' || $key === 'site_admin_email_notifications' || $key === 'admin_email') && !empty($value) && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                        $errors[$key . '_err'] = 'Please enter a valid email address for ' . $manageableOptions[$key]['label'] . '.';
+                    } else {
+                        $settingsToSave[$key] = $value;
+                    }
                 }
             }
 
-            // Validate selected time format if it's one of the predefined ones
-            if (isset($settingsToSave['site_time_format']) && 
-                !array_key_exists($settingsToSave['site_time_format'], $manageableOptions['site_time_format']['options'])) {
-                // If an invalid format is submitted, perhaps revert to default or show an error.
-                // For simplicity here, we'll allow it, but validation is good.
-                // Or, ensure the submitted value is one of the keys from the options array.
-                // For now, we assume the form only submits valid keys.
-            }
-
-
-            if ($this->optionModel->saveOptions($settingsToSave)) {
-                $_SESSION['admin_message'] = 'Site settings updated successfully!';
+            if (empty($errors)) {
+                if ($this->optionModel->saveOptions($settingsToSave)) {
+                    $_SESSION['admin_message'] = 'Site settings updated successfully!';
+                } else {
+                    $_SESSION['admin_message'] = 'Error: Could not save all site settings.';
+                }
+                redirect('admin/siteSettings');
             } else {
-                $_SESSION['admin_message'] = 'Error: Could not save all site settings.';
+                // If errors, pass them to the view
+                // Repopulate settings with POST data to show user's input
+                $currentSettings = [];
+                 foreach ($manageableOptions as $key => $details) {
+                    $currentSettings[$key] = $_POST[$key] ?? ($this->optionModel->getOption($key, $details['default'] ?? ''));
+                }
+                $data = [
+                    'pageTitle' => 'Site Settings',
+                    'settings' => $currentSettings, // Use POSTed values for repopulation
+                    'manageableOptions' => $manageableOptions, 
+                    'errors' => $errors, // Pass errors to the view
+                    'breadcrumbs' => [
+                        ['label' => 'Admin Panel', 'url' => 'admin'],
+                        ['label' => 'Site Settings']
+                    ]
+                ];
+                $this->view('admin/site_settings', $data);
+                return; // Stop further processing
             }
-            redirect('admin/siteSettings');
         }
 
+        // For GET request
         $currentSettings = [];
         $dbOptions = $this->optionModel->getOptions($optionKeys);
         foreach ($manageableOptions as $key => $details) {
@@ -516,6 +555,7 @@ class AdminController {
             'pageTitle' => 'Site Settings',
             'settings' => $currentSettings,
             'manageableOptions' => $manageableOptions, 
+            'errors' => [], // No errors on GET
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Site Settings']
@@ -578,7 +618,7 @@ class AdminController {
         $this->view('admin/role_access_settings', $data); 
     }
 
-    // --- Role Management Methods (NEW) ---
+    // --- Role Management Methods ---
     public function listRoles() {
         if (!userHasCapability('MANAGE_ROLES')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage roles.';

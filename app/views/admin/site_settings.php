@@ -1,5 +1,5 @@
 <?php
-// pageTitle, settings (array of current values), manageableOptions (array of definitions), and breadcrumbs
+// pageTitle, settings (array of current values), manageableOptions (array of definitions), errors, and breadcrumbs
 // are passed from AdminController's siteSettings() method.
 
 // Include header
@@ -30,18 +30,20 @@ require_once __DIR__ . '/../layouts/header.php';
                     <?php foreach ($manageableOptions as $optionKey => $optionDetails): ?>
                         <?php
                         $label = $optionDetails['label'] ?? ucwords(str_replace('_', ' ', $optionKey));
-                        $currentValue = $settings[$optionKey] ?? ($optionDetails['default'] ?? '');
+                        // Use submitted value if an error occurred, otherwise use current setting
+                        $currentValue = isset($errors) && !empty($errors) && isset($settings[$optionKey]) ? $settings[$optionKey] : ($settings[$optionKey] ?? ($optionDetails['default'] ?? ''));
                         $inputType = $optionDetails['type'] ?? 'text';
                         $optionsForSelect = $optionDetails['options'] ?? []; 
                         $helpText = $optionDetails['help'] ?? '';
+                        $errorMsg = $errors[$optionKey . '_err'] ?? '';
                         ?>
                         <div class="mb-3">
                             <label for="<?php echo htmlspecialchars($optionKey); ?>" class="form-label"><?php echo htmlspecialchars($label); ?>:</label>
                             
                             <?php if ($inputType === 'textarea'): ?>
-                                <textarea name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control" rows="3"><?php echo htmlspecialchars($currentValue); ?></textarea>
+                                <textarea name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control <?php echo !empty($errorMsg) ? 'is-invalid' : ''; ?>" rows="3"><?php echo htmlspecialchars($currentValue); ?></textarea>
                             <?php elseif ($inputType === 'select' && !empty($optionsForSelect)): ?>
-                                <select name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-select">
+                                <select name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-select <?php echo !empty($errorMsg) ? 'is-invalid' : ''; ?>">
                                     <?php foreach ($optionsForSelect as $value => $display): ?>
                                         <option value="<?php echo htmlspecialchars($value); ?>" <?php echo ($currentValue == $value) ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($display); ?>
@@ -49,14 +51,18 @@ require_once __DIR__ . '/../layouts/header.php';
                                     <?php endforeach; ?>
                                 </select>
                             <?php elseif ($inputType === 'number'): ?>
-                                 <input type="number" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control"
+                                 <input type="number" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control <?php echo !empty($errorMsg) ? 'is-invalid' : ''; ?>"
                                        value="<?php echo htmlspecialchars($currentValue); ?>">
-                            <?php else: // Default to text input ?>
-                                <input type="<?php echo htmlspecialchars($inputType); // Allows 'email', 'text', etc. ?>" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control"
+                            <?php else: // Default to text input, supports 'email', 'text' etc. ?>
+                                <input type="<?php echo htmlspecialchars($inputType); ?>" name="<?php echo htmlspecialchars($optionKey); ?>" id="<?php echo htmlspecialchars($optionKey); ?>" class="form-control <?php echo !empty($errorMsg) ? 'is-invalid' : ''; ?>"
                                        value="<?php echo htmlspecialchars($currentValue); ?>">
                             <?php endif; ?>
+
                             <?php if ($helpText): ?>
                                 <small class="form-text text-muted"><?php echo htmlspecialchars($helpText); ?></small>
+                            <?php endif; ?>
+                            <?php if (!empty($errorMsg)): ?>
+                                <div class="invalid-feedback d-block"><?php echo htmlspecialchars($errorMsg); ?></div>
                             <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
