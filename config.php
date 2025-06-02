@@ -20,9 +20,9 @@ date_default_timezone_set('Asia/Manila');
 define('DEFAULT_TIME_FORMAT', 'Y-m-d H:i');
 
 // --- Email Configuration Defaults ---
-define('DEFAULT_SITE_EMAIL_FROM', 'noreply@example.com'); // Default "From" address for system emails
-define('DEFAULT_ADMIN_EMAIL_NOTIFICATIONS', 'admin@example.com'); // Default email to send admin notifications
-define('DEFAULT_EMAIL_NOTIFICATIONS_ENABLED', 'on'); // Master switch: 'on' or 'off'
+define('DEFAULT_SITE_EMAIL_FROM', 'noreply@example.com'); 
+define('DEFAULT_ADMIN_EMAIL_NOTIFICATIONS', 'admin@example.com'); 
+define('DEFAULT_EMAIL_NOTIFICATIONS_ENABLED', 'on'); 
 
 
 $pdo = null; 
@@ -121,16 +121,6 @@ function format_datetime_for_display($datetimeString, $customFormat = null) {
     }
 }
 
-/**
- * Send a system email.
- *
- * @global PDO $pdo
- * @param string $to The recipient's email address.
- * @param string $subject The email subject.
- * @param string $message The email message body.
- * @param array|null $additional_headers Optional additional headers.
- * @return bool True if the email was accepted for delivery, false otherwise.
- */
 function send_system_email($to, $subject, $message, $additional_headers = null) {
     global $pdo;
 
@@ -147,17 +137,17 @@ function send_system_email($to, $subject, $message, $additional_headers = null) 
     $notificationsEnabled = $optionModel->getOption('site_email_notifications_enabled', DEFAULT_EMAIL_NOTIFICATIONS_ENABLED);
     if (strtolower($notificationsEnabled) !== 'on') {
         error_log("Email notifications are disabled. Email to {$to} with subject '{$subject}' not sent.");
-        return false; // Master switch is off
+        return false; 
     }
 
-    $siteName = $optionModel->getOption('site_name', 'Mainsystem'); // Get site name for subject/body
+    $siteName = $optionModel->getOption('site_name', 'Mainsystem'); 
     $fromEmail = $optionModel->getOption('site_email_from', DEFAULT_SITE_EMAIL_FROM);
 
     $headers = "From: {$siteName} <{$fromEmail}>\r\n";
     $headers .= "Reply-To: {$fromEmail}\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n"; // Plain text email
+    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n"; 
 
     if (is_array($additional_headers)) {
         foreach ($additional_headers as $header) {
@@ -165,9 +155,7 @@ function send_system_email($to, $subject, $message, $additional_headers = null) 
         }
     }
 
-    // Add a simple footer to the message
     $fullMessage = $message . "\r\n\r\n--\r\nThis is an automated message from " . $siteName . ".\r\n" . BASE_URL;
-
     $subjectWithSiteName = "[{$siteName}] " . $subject;
 
     if (mail($to, $subjectWithSiteName, $fullMessage, $headers)) {
@@ -182,6 +170,7 @@ function send_system_email($to, $subject, $message, $additional_headers = null) 
 
 // --- Role and Capability Management ---
 define('CAPABILITIES', [
+    // General Admin
     'ACCESS_ADMIN_PANEL' => 'Access Admin Panel',
     'MANAGE_USERS' => 'Manage Users (Add, Edit, Delete)',
     'MANAGE_ROLES' => 'Manage Roles (Add, Edit, Delete)', 
@@ -189,8 +178,21 @@ define('CAPABILITIES', [
     'MANAGE_DEPARTMENTS' => 'Manage Departments',
     'MANAGE_SITE_SETTINGS' => 'Manage Site Settings',
     'VIEW_REPORTS' => 'View Reports (Example)',
-    'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations', 
+    
+    // Open Office - Rooms (Physical Entities)
     'MANAGE_ROOMS' => 'Manage Rooms (CRUD)', 
+    
+    // Open Office - Room Reservations
+    'CREATE_ROOM_RESERVATIONS' => 'Create Own Room Reservations',
+    'EDIT_OWN_ROOM_RESERVATIONS' => 'Edit Own Pending Room Reservations', // Future: For editing details of a pending request
+    'CANCEL_OWN_ROOM_RESERVATIONS' => 'Cancel Own Pending Room Reservations',
+    'VIEW_ALL_ROOM_RESERVATIONS' => 'View All Room Reservations', // Admin/Manager view
+    'APPROVE_DENY_ROOM_RESERVATIONS' => 'Approve/Deny Room Reservations', // Admin/Manager action
+    'EDIT_ANY_ROOM_RESERVATION' => 'Edit Any Room Reservation', // Super Admin action (e.g., change times, purpose)
+    'DELETE_ANY_ROOM_RESERVATION' => 'Delete Any Room Reservation Record', // Super Admin action (remove from system)
+
+    // Other Modules (examples, can be expanded)
+    // 'MANAGE_OPEN_OFFICE_RESERVATIONS' => 'Manage Open Office Reservations', // This was a bit broad, replaced by more specific ones above for rooms
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',
     'MANAGE_RAP_CALENDAR' => 'Manage Rap Calendar',
     'MANAGE_SES_DATA' => 'Manage SES Data',

@@ -231,3 +231,35 @@ INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES ('admin', 
 INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES ('admin', 'MANAGE_ROOMS');
 -- Add for other roles as needed, e.g.:
 -- INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES ('editor', 'MANAGE_ROOMS');
+
+
+-- Ensure your 'admin' role_key exists in the 'roles' table.
+-- These are examples; adjust 'admin' or other role_keys as needed.
+
+-- For an 'admin' role, grant all new room reservation capabilities:
+INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+('admin', 'CREATE_ROOM_RESERVATIONS'),
+('admin', 'EDIT_OWN_ROOM_RESERVATIONS'), -- If you plan to implement this
+('admin', 'CANCEL_OWN_ROOM_RESERVATIONS'),
+('admin', 'VIEW_ALL_ROOM_RESERVATIONS'),
+('admin', 'APPROVE_DENY_ROOM_RESERVATIONS'),
+('admin', 'EDIT_ANY_ROOM_RESERVATION'),   -- If you plan to implement this
+('admin', 'DELETE_ANY_ROOM_RESERVATION'); -- If you plan to implement this
+
+-- For a standard 'user' role, grant basic capabilities:
+INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+('user', 'CREATE_ROOM_RESERVATIONS'),
+('user', 'CANCEL_OWN_ROOM_RESERVATIONS');
+-- Optionally, 'user' might also get 'EDIT_OWN_ROOM_RESERVATIONS' if you implement that feature for users.
+
+-- For an 'editor' or 'manager' role, you might give a subset:
+-- INSERT INTO `role_permissions` (`role_name`, `capability_key`) VALUES
+-- ('editor', 'CREATE_ROOM_RESERVATIONS'),
+-- ('editor', 'CANCEL_OWN_ROOM_RESERVATIONS'),
+-- ('editor', 'VIEW_ALL_ROOM_RESERVATIONS'); -- If they need to see all but not approve
+
+-- Important: Ensure these capability keys match exactly what's in your config.php
+-- and that the role_name (e.g., 'admin', 'user') matches the role_key in your 'roles' table.
+-- Avoid duplicate entries. If a role already has a capability, these inserts might fail
+-- or you might want to use INSERT IGNORE or an UPDATE ON DUPLICATE KEY statement
+-- depending on your database setup and desired behavior.

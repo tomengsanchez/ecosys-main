@@ -1,6 +1,48 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.19.0 - Granular Role Permissions for Room Reservations (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+Config.php Updates:
+Defined new, more specific capability constants for room reservation management within the CAPABILITIES array:
+CREATE_ROOM_RESERVATIONS: To create own reservation requests.
+EDIT_OWN_ROOM_RESERVATIONS: (Future Use) To edit own pending reservations.
+CANCEL_OWN_ROOM_RESERVATIONS: To cancel own pending reservations.
+VIEW_ALL_ROOM_RESERVATIONS: To view all room reservations (admin/manager).
+APPROVE_DENY_ROOM_RESERVATIONS: To approve/deny pending reservations (admin/manager).
+EDIT_ANY_ROOM_RESERVATION: (Future Use) To edit any reservation (super admin).
+DELETE_ANY_ROOM_RESERVATION: (Future Use) To delete any reservation record (super admin).
+The previously broader MANAGE_OPEN_OFFICE_RESERVATIONS capability was commented out as it's superseded by these more granular ones for room bookings.
+
+OpenOfficeController.php Modifications:
+Updated existing room reservation methods to use the new granular capabilities for access control:
+roomreservations(): Now protected by VIEW_ALL_ROOM_RESERVATIONS.
+createreservation(): Now protected by CREATE_ROOM_RESERVATIONS.
+cancelreservation(): Now protected by CANCEL_OWN_ROOM_RESERVATIONS.
+approvereservation(): Now protected by APPROVE_DENY_ROOM_RESERVATIONS.
+denyreservation(): Now protected by APPROVE_DENY_ROOM_RESERVATIONS.
+Added placeholder methods for future functionalities, each protected by its new specific capability:
+editMyReservation($reservationId): Protected by EDIT_OWN_ROOM_RESERVATIONS.
+editAnyReservation($reservationId): Protected by EDIT_ANY_ROOM_RESERVATION.
+deleteAnyReservation($reservationId): Protected by DELETE_ANY_ROOM_RESERVATION.
+Room entity management methods (rooms, addRoom, editRoom, deleteRoom) remain protected by MANAGE_ROOMS.
+
+Database Seeding (Conceptual):
+Noted the requirement to update the role_permissions table in the database to assign these new capabilities to appropriate roles (e.g., 'admin', 'user'). Example SQL INSERT statements were provided for guidance.
+
+Key Changes & Fixes:
+Implemented a more detailed and flexible permission system for room reservations.
+Allows for finer control over which roles can perform specific actions related to bookings.
+Prepared the groundwork for future edit/delete functionalities for reservations by defining and protecting their respective capabilities.
+
+To-Do / Next Steps:
+Implement the actual logic for editMyReservation, editAnyReservation, and deleteAnyReservation.
+Update the admin UI for role permission management (role_access_settings.php) to include these new capabilities so they can be assigned to roles dynamically.
+Adjust UI elements (e.g., show/hide buttons) based on these new granular permissions.
+
 Version 0.18.0 - Dynamic Time Slot Filtering in Reservation Form (2025-06-02)
 Date: 2025-06-02
 
@@ -25,10 +67,6 @@ The script attempts to preserve the user's previous time slot selection if it re
 Key Changes & Fixes:
 Significantly improved user experience by preventing users from selecting time slots that are already booked (approved) or are in the past for a given room and date.
 Provided real-time feedback in the UI about slot availability.
-
-To-Do / Next Steps (Examples for Dynamic Slots):
-Consider more advanced UI cues, like visually distinct styling for disabled options beyond just the text update.
-Optimize JavaScript if dealing with a very large number of base time slots or approved reservations (though current implementation should be fine for typical scenarios).
 
 Version 0.17.0 - Email Notifications for Room Reservations (2025-06-02)
 Date: 2025-06-02
