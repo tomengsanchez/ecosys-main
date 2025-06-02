@@ -1,54 +1,51 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.18.0 - Dynamic Time Slot Filtering in Reservation Form (2025-06-02)
+Date: 2025-06-02
+
+Features Implemented:
+
+OpenOfficeController.php (createreservation() method - GET request part):
+Modified to fetch all 'approved' reservations for the specific room being booked.
+Extracted and passed an array of these approved time ranges (start and end datetimes) to the view as a JSON string (approved_reservations_json). This data is used by client-side JavaScript.
+
+Reservation Form View (app/views/openoffice/reservation_form.php):
+Added JavaScript logic to dynamically update the time slot dropdown based on the selected date and pre-existing approved reservations.
+On page load and when the date input changes:
+The script parses the approved_reservations_json data.
+It filters approved reservations relevant to the selected date.
+It iterates through the base 1-hour time slots.
+For each slot, it constructs the full start and end datetime.
+It checks if the slot is in the past or if it conflicts with any approved reservations for that day.
+Conflicting or past time slots are disabled in the dropdown, and their display text is updated (e.g., "9:00 AM - 10:00 AM (Booked)" or "(Past)").
+Available slots remain enabled.
+The script attempts to preserve the user's previous time slot selection if it remains valid after the date change.
+
+Key Changes & Fixes:
+Significantly improved user experience by preventing users from selecting time slots that are already booked (approved) or are in the past for a given room and date.
+Provided real-time feedback in the UI about slot availability.
+
+To-Do / Next Steps (Examples for Dynamic Slots):
+Consider more advanced UI cues, like visually distinct styling for disabled options beyond just the text update.
+Optimize JavaScript if dealing with a very large number of base time slots or approved reservations (though current implementation should be fine for typical scenarios).
+
 Version 0.17.0 - Email Notifications for Room Reservations (2025-06-02)
 Date: 2025-06-02
 
 Features Implemented:
 
 Config.php Enhancements:
-Added email configuration constants: DEFAULT_SITE_EMAIL_FROM, DEFAULT_ADMIN_EMAIL_NOTIFICATIONS, DEFAULT_EMAIL_NOTIFICATIONS_ENABLED.
-Created send_system_email($to, $subject, $message, $additional_headers = null) helper function:
-Checks a global 'site_email_notifications_enabled' option (from database via OptionModel) before sending.
-Uses 'site_name' and 'site_email_from' options for email construction.
-Sets basic headers (From, Reply-To, Content-Type: text/plain).
-Uses PHP's mail() function and includes basic logging.
+Added email configuration constants and send_system_email() helper function.
 
 Admin Site Settings (AdminController.php & site_settings.php view):
-AdminController::siteSettings():
-Added new manageable options for email configuration:
-site_email_notifications_enabled (Select: On/Off).
-site_email_from (Input: email, for system "From" address).
-site_admin_email_notifications (Input: email, for admin-specific notifications).
-Added basic email validation for email input fields.
-app/views/admin/site_settings.php:
-Updated to render the new email configuration fields with appropriate input types and error message display.
+Added manageable options for email configuration (enable/disable, from address, admin recipient).
 
 OpenOfficeController.php - Email Integration:
-Instantiated OptionModel to access email settings.
-Integrated send_system_email() calls into the reservation workflow:
-createreservation():
-Notifies the user that their request is pending.
-Notifies the admin (using 'site_admin_email_notifications' email) of the new pending request.
-approvereservation():
-Notifies the user that their reservation has been approved.
-If conflicting pending reservations are auto-denied, notifies the respective users of the denial and the reason (conflict with newly approved booking).
-denyreservation():
-Notifies the user that their reservation request has been denied or revoked by an administrator.
-cancelreservation():
-Notifies the admin (using 'site_admin_email_notifications' email) that a user has cancelled their pending reservation.
-All email messages include relevant details (room name, user name, times, purpose) and use format_datetime_for_display().
+Integrated send_system_email() for new reservations, approvals, denials (manual & auto), and user cancellations.
 
 Key Changes & Fixes:
-Implemented a system for sending email notifications for various room reservation events.
-Made email sending configurable through admin site settings (enable/disable, from address, admin recipient).
-Improved user and admin communication regarding reservation status changes.
-
-To-Do / Next Steps (Examples for Email Feature):
-Implement more robust email sending using a library like PHPMailer for SMTP support, HTML emails, and better error handling.
-Allow customization of email templates.
-Add options for users to manage their notification preferences.
-Extend email notifications to other modules (e.g., user registration, IT requests).
+Implemented email notifications for room reservation events. Made email sending configurable.
 
 Version 0.16.0 - Server-Side Handling for 1-Hour Time Slot Reservations (2025-06-02)
 Date: 2025-06-02
@@ -56,19 +53,11 @@ Date: 2025-06-02
 Features Implemented:
 
 OpenOfficeController.php (createreservation() method):
-Modified to correctly process form submissions using the new date input and time slot dropdown.
-Retrieves reservation_date and reservation_time_slot from $_POST.
-Validates that both reservation_date and reservation_time_slot are provided.
-Parses the reservation_time_slot string (e.g., "08:00-09:00") to extract individual start and end times.
-Combines the selected reservation_date with the parsed start and end times to construct full datetime strings (e.g., "YYYY-MM-DD HH:MM:SS") for reservation_start_datetime and reservation_end_datetime.
-Includes validation to ensure the constructed start datetime is not in the past.
-Uses these full datetime strings for conflict checking against existing 'approved' reservations.
-Stores the full reservation_start_datetime and reservation_end_datetime in the meta_fields when creating the 'reservation' object.
-If validation errors occur, the submitted reservation_date and reservation_time_slot are passed back to the view to repopulate the form.
+Modified to correctly process form submissions using the new date input and 1-hour time slot dropdown.
+Parses time slot, combines with date, validates, checks conflicts, and stores full datetime strings.
 
 Key Changes & Fixes:
-Enabled the server-side logic to support the new 1-hour time slot selection UI for room reservations.
-Ensured that date and time slot selections are correctly processed and stored for conflict checking and record-keeping.
+Enabled server-side logic for 1-hour time slot selections.
 
 Version 0.15.0 - Reservation Form Time Intervals (UI Update to 1-Hour Slots & 00/30 Min Enforcement) (2025-06-02)
 Date: 2025-06-02
@@ -76,16 +65,11 @@ Date: 2025-06-02
 Features Implemented:
 
 Reservation Form (app/views/openoffice/reservation_form.php):
-Replaced the two datetime-local inputs with:
-A single <input type="date"> for selecting the reservation date.
-A <select> dropdown for choosing predefined 1-hour time slots (e.g., "8:00 AM - 9:00 AM").
-Time slots are generated in PHP from 8 AM to 5 PM.
-The step="1800" attribute was kept on datetime-local inputs (though these inputs were then replaced by the date/select combo in a subsequent iteration, this note reflects the state if datetime-local were still used with 30-min steps).
-Added JavaScript to datetime-local inputs (before they were replaced) to enforce minute selection to be 00 or 30 by adjusting the value on the change event. This JS was removed when datetime-local was replaced by the date/select combination.
+Replaced datetime-local inputs with a date input and a 1-hour time slot select dropdown.
+Previous JS for 30-min interval enforcement on datetime-local became inapplicable and was removed in favor of the new slot selection method.
 
 Key Changes & Fixes:
-Changed the UI for time selection in the room reservation form to use predefined 1-hour slots, aiming for a simpler user experience.
-Initially enhanced datetime-local inputs with step="1800" and JavaScript for strict 00/30 minute UI enforcement, which became moot when the input method was changed to a date picker and a fixed time-slot dropdown.
+Changed UI for time selection to predefined 1-hour slots.
 
 Version 0.14.0 - Site-Wide Time Formatting (2025-06-02)
 Date: 2025-06-02
@@ -93,13 +77,13 @@ Date: 2025-06-02
 Features Implemented:
 
 Config.php Enhancements:
-Set a default PHP timezone. Defined DEFAULT_TIME_FORMAT. Added get_site_time_format() and format_datetime_for_display() helper functions.
+Set default PHP timezone. Defined DEFAULT_TIME_FORMAT. Added get_site_time_format() and format_datetime_for_display() helper functions.
 
 Admin Site Settings (AdminController.php & site_settings.php view):
 Added 'site_time_format' to manageable options with a dropdown of common PHP date formats.
 
 View Updates for Consistent Time Display:
-Applied format_datetime_for_display() to user_registered, created_at, object_modified, reservation start/end times, and request dates across admin and Open Office views.
+Applied format_datetime_for_display() across admin and Open Office views.
 
 Dashboard Calendar (DashboardController.php & dashboard/index.php view):
 Updated to use format_datetime_for_display() for calendar event tooltips.

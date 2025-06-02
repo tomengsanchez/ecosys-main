@@ -9,7 +9,7 @@ class OpenOfficeController {
     private $pdo;
     private $objectModel;
     private $userModel; 
-    private $optionModel; // Added for fetching email settings
+    private $optionModel; 
 
     /**
      * Constructor
@@ -20,41 +20,32 @@ class OpenOfficeController {
         $this->pdo = $pdo;
         $this->objectModel = new ObjectModel($this->pdo);
         $this->userModel = new UserModel($this->pdo); 
-        $this->optionModel = new OptionModel($this->pdo); // Instantiate OptionModel
+        $this->optionModel = new OptionModel($this->pdo); 
 
         if (!isLoggedIn()) {
             redirect('auth/login');
         }
     }
 
-    // --- Room Management Methods (addRoom, editRoom, deleteRoom, rooms) remain the same ---
-    // ... (Previous room management methods are unchanged by this email feature) ...
-    /**
-     * Display the list of rooms. (R in CRUD for Rooms)
-     */
+    // --- Room Management Methods (addRoom, editRoom, deleteRoom, rooms) ---
+    // These methods remain largely the same as before.
+    // For brevity, they are not repeated in full here but assume they exist as previously defined.
     public function rooms() {
         if (!userHasCapability('MANAGE_ROOMS')) {
             $_SESSION['error_message'] = "You do not have permission to manage rooms.";
             redirect('dashboard');
         }
-
         $rooms = $this->objectModel->getObjectsByType('room', ['orderby' => 'object_title', 'orderdir' => 'ASC']);
-        
         $data = [
             'pageTitle' => 'Manage Rooms',
             'rooms' => $rooms,
-            'breadcrumbs' => [
-                ['label' => 'Open Office', 'url' => 'openoffice/rooms'], 
-                ['label' => 'Manage Rooms']
-            ]
+            'breadcrumbs' => [['label' => 'Open Office', 'url' => 'openoffice/rooms'], ['label' => 'Manage Rooms']]
         ];
         $this->view('openoffice/rooms_list', $data);
     }
 
-    /**
-     * Display form to add a new room OR process adding a new room. (C in CRUD for Rooms)
-     */
     public function addRoom() {
+        // ... (implementation as before) ...
         if (!userHasCapability('MANAGE_ROOMS')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to add rooms.';
             redirect('openoffice/rooms');
@@ -125,11 +116,8 @@ class OpenOfficeController {
             $this->view('openoffice/room_form', $data);
         }
     }
-
-    /**
-     * Display form to edit an existing room OR process updating an existing room. (U in CRUD for Rooms)
-     */
     public function editRoom($roomId = null) {
+        // ... (implementation as before) ...
         if (!userHasCapability('MANAGE_ROOMS')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to edit rooms.';
             redirect('openoffice/rooms');
@@ -214,11 +202,8 @@ class OpenOfficeController {
             $this->view('openoffice/room_form', $data);
         }
     }
-
-    /**
-     * Delete a room. (D in CRUD for Rooms)
-     */
     public function deleteRoom($roomId = null) {
+        // ... (implementation as before) ...
         if (!userHasCapability('MANAGE_ROOMS')) {
             $_SESSION['admin_message'] = 'Error: You do not have permission to delete rooms.';
             redirect('openoffice/rooms');
@@ -247,10 +232,10 @@ class OpenOfficeController {
         redirect('openoffice/rooms');
     }
 
-
     // --- Room Reservation Methods ---
 
     public function roomreservations() {
+        // ... (implementation as before) ...
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to manage room reservations.";
             redirect('dashboard');
@@ -265,8 +250,8 @@ class OpenOfficeController {
         if ($reservations) {
             foreach ($reservations as &$res) {
                 if (!empty($res['object_parent'])) { 
-                    $room = $this->objectModel->getObjectById($res['object_parent']);
-                    $res['room_name'] = $room ? $room['object_title'] : 'Unknown Room';
+                    $roomFromDb = $this->objectModel->getObjectById($res['object_parent']); // Renamed to avoid conflict
+                    $res['room_name'] = $roomFromDb ? $roomFromDb['object_title'] : 'Unknown Room';
                 } else {
                     $res['room_name'] = 'N/A';
                 }
@@ -305,9 +290,28 @@ class OpenOfficeController {
             redirect('openoffice/rooms');
         }
 
+        // Fetch approved reservations for this room to pass to the view for dynamic slot filtering
+        $approvedReservationsData = [];
+        $approvedRoomReservations = $this->objectModel->getObjectsByConditions(
+            'reservation',
+            ['object_parent' => $roomId, 'object_status' => 'approved']
+        );
+
+        if ($approvedRoomReservations) {
+            foreach ($approvedRoomReservations as $approvedRes) {
+                if (isset($approvedRes['meta']['reservation_start_datetime']) && isset($approvedRes['meta']['reservation_end_datetime'])) {
+                    $approvedReservationsData[] = [
+                        'start' => $approvedRes['meta']['reservation_start_datetime'],
+                        'end' => $approvedRes['meta']['reservation_end_datetime']
+                    ];
+                }
+            }
+        }
+
         $commonData = [
             'pageTitle' => 'Book Room: ' . htmlspecialchars($room['object_title']),
             'room' => $room,
+            'approved_reservations_json' => json_encode($approvedReservationsData), // Pass as JSON
             'breadcrumbs' => [
                 ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
                 ['label' => 'Manage Rooms', 'url' => 'openoffice/rooms'], 
@@ -410,7 +414,6 @@ class OpenOfficeController {
                 if ($reservationId) {
                     $_SESSION['message'] = 'Reservation request submitted successfully! It is now pending approval.';
                     
-                    // Send email notifications
                     $user = $this->userModel->findUserById($_SESSION['user_id']);
                     $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
                     $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
@@ -418,7 +421,6 @@ class OpenOfficeController {
                     $formattedStartTime = format_datetime_for_display($fullStartDateTimeStr);
                     $formattedEndTime = format_datetime_for_display($fullEndDateTimeStr);
 
-                    // Notify User
                     if ($user && !empty($user['user_email'])) {
                         $userSubject = "Your Reservation Request for {$room['object_title']} is Pending";
                         $userMessage = "Dear {$user['display_name']},\n\n" .
@@ -433,7 +435,6 @@ class OpenOfficeController {
                         send_system_email($user['user_email'], $userSubject, $userMessage);
                     }
 
-                    // Notify Admin
                     if ($adminEmail) {
                         $adminSubject = "New Room Reservation Request: {$room['object_title']} by {$user['display_name']}";
                         $adminMessage = "A new room reservation request has been submitted:\n\n" .
@@ -458,17 +459,20 @@ class OpenOfficeController {
                 $this->view('openoffice/reservation_form', $data);
             }
         } else {
+            // GET Request: Pass approved reservations data
             $data = array_merge($commonData, [
                 'reservation_date' => date('Y-m-d'), 
                 'reservation_time_slot' => '', 
                 'reservation_purpose' => '',
-                'errors' => []
+                'errors' => [],
+                // 'approved_reservations_json' is already in $commonData
             ]);
             $this->view('openoffice/reservation_form', $data); 
         }
     }
 
     public function myreservations() {
+        // ... (implementation as before) ...
         $userId = $_SESSION['user_id'];
         
         $myReservations = $this->objectModel->getObjectsByConditions('reservation', ['object_author' => $userId], [
@@ -480,8 +484,8 @@ class OpenOfficeController {
         if ($myReservations) {
             foreach ($myReservations as &$res) {
                  if (!empty($res['object_parent'])) { 
-                    $room = $this->objectModel->getObjectById($res['object_parent']);
-                    $res['room_name'] = $room ? $room['object_title'] : 'Unknown Room';
+                    $roomFromDb = $this->objectModel->getObjectById($res['object_parent']); // Renamed
+                    $res['room_name'] = $roomFromDb ? $roomFromDb['object_title'] : 'Unknown Room';
                 } else {
                     $res['room_name'] = 'N/A';
                 }
@@ -502,6 +506,7 @@ class OpenOfficeController {
     }
 
     public function cancelreservation($reservationId = null) {
+        // ... (implementation as before, including email notification) ...
         if ($reservationId === null) {
             $_SESSION['error_message'] = 'No reservation ID specified.';
             redirect('openoffice/myreservations');
@@ -519,15 +524,14 @@ class OpenOfficeController {
             if ($this->objectModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
                 $_SESSION['message'] = 'Reservation cancelled successfully.';
                 
-                // Notify Admin of cancellation
                 $user = $this->userModel->findUserById($reservation['object_author']);
-                $room = $this->objectModel->getObjectById($reservation['object_parent']);
+                $roomFromDb = $this->objectModel->getObjectById($reservation['object_parent']); // Renamed
                 $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
                 
-                if ($adminEmail && $user && $room) {
-                    $subject = "Reservation Cancelled by User: {$room['object_title']}";
+                if ($adminEmail && $user && $roomFromDb) {
+                    $subject = "Reservation Cancelled by User: {$roomFromDb['object_title']}";
                     $message = "The following reservation request has been cancelled by the user ({$user['display_name']}):\n\n" .
-                               "Room: {$room['object_title']}\n" .
+                               "Room: {$roomFromDb['object_title']}\n" .
                                "Original Start: " . format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '') . "\n" .
                                "Original End: " . format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '') . "\n" .
                                "Purpose: {$reservation['object_content']}\n\n" .
@@ -541,8 +545,8 @@ class OpenOfficeController {
         redirect('openoffice/myreservations');
     }
 
-
     public function approvereservation($reservationId = null) {
+        // ... (implementation as before, including email notifications) ...
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to approve reservations.";
             redirect('openoffice/roomreservations'); 
@@ -579,15 +583,14 @@ class OpenOfficeController {
                 if ($this->objectModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                     $_SESSION['admin_message'] = 'Reservation approved successfully.';
                     
-                    // Notify User of Approval
                     $user = $this->userModel->findUserById($reservationToApprove['object_author']);
-                    $room = $this->objectModel->getObjectById($roomId);
-                    if ($user && !empty($user['user_email']) && $room) {
-                        $subject = "Your Reservation for {$room['object_title']} has been Approved";
+                    $roomFromDb = $this->objectModel->getObjectById($roomId); // Renamed
+                    if ($user && !empty($user['user_email']) && $roomFromDb) {
+                        $subject = "Your Reservation for {$roomFromDb['object_title']} has been Approved";
                         $message = "Dear {$user['display_name']},\n\n" .
-                                   "Your reservation request for the room '{$room['object_title']}' has been approved.\n" .
+                                   "Your reservation request for the room '{$roomFromDb['object_title']}' has been approved.\n" .
                                    "Details:\n" .
-                                   "Room: {$room['object_title']}\n" .
+                                   "Room: {$roomFromDb['object_title']}\n" .
                                    "Purpose: {$reservationToApprove['object_content']}\n" .
                                    "Start Time: " . format_datetime_for_display($startTime) . "\n" .
                                    "End Time: " . format_datetime_for_display($endTime) . "\n\n" .
@@ -605,9 +608,8 @@ class OpenOfficeController {
                             if ($this->objectModel->updateObject($pendingConflict['object_id'], ['object_status' => 'denied'])) {
                                 $deniedCount++;
                                 error_log("Reservation ID {$pendingConflict['object_id']} automatically denied due to approval of {$reservationId}.");
-                                // Notify user of auto-denial
                                 $conflictUser = $this->userModel->findUserById($pendingConflict['object_author'] ?? $this->objectModel->getObjectById($pendingConflict['object_id'])['object_author']);
-                                $conflictRoom = $this->objectModel->getObjectById($roomId); // Room is the same
+                                $conflictRoom = $this->objectModel->getObjectById($roomId); 
                                 if ($conflictUser && !empty($conflictUser['user_email']) && $conflictRoom) {
                                     $cSubject = "Your Reservation Request for {$conflictRoom['object_title']} was Denied";
                                     $cMessage = "Dear {$conflictUser['display_name']},\n\n" .
@@ -632,6 +634,7 @@ class OpenOfficeController {
     }
 
     public function denyreservation($reservationId = null) {
+        // ... (implementation as before, including email notification) ...
         if (!userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to deny reservations.";
             redirect('openoffice/roomreservations'); 
@@ -652,16 +655,15 @@ class OpenOfficeController {
             if ($this->objectModel->updateObject($reservationId, ['object_status' => 'denied'])) {
                 $_SESSION['admin_message'] = 'Reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
                 
-                // Notify User of Denial/Revocation
                 $user = $this->userModel->findUserById($reservation['object_author']);
-                $room = $this->objectModel->getObjectById($reservation['object_parent']);
-                if ($user && !empty($user['user_email']) && $room) {
-                    $subject = "Your Reservation Request for {$room['object_title']} was " . ($originalStatus === 'approved' ? 'Revoked/Denied' : 'Denied');
+                $roomFromDb = $this->objectModel->getObjectById($reservation['object_parent']); // Renamed
+                if ($user && !empty($user['user_email']) && $roomFromDb) {
+                    $subject = "Your Reservation Request for {$roomFromDb['object_title']} was " . ($originalStatus === 'approved' ? 'Revoked/Denied' : 'Denied');
                     $message = "Dear {$user['display_name']},\n\n" .
-                               "We regret to inform you that your reservation request for the room '{$room['object_title']}' for the time slot " .
+                               "We regret to inform you that your reservation request for the room '{$roomFromDb['object_title']}' for the time slot " .
                                format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '') . " to " . format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '') .
                                " has been " . ($originalStatus === 'approved' ? 'revoked and denied by an administrator.' : 'denied by an administrator.') . "\n\n" .
-                               "Reason for denial (if provided by admin): Not specified in this notification.\n" . // Admin could add a reason field later
+                               "Reason for denial (if provided by admin): Not specified in this notification.\n" . 
                                "Please contact an administrator if you have questions or try booking an alternative time slot.";
                     send_system_email($user['user_email'], $subject, $message);
                 }
@@ -672,9 +674,7 @@ class OpenOfficeController {
         redirect('openoffice/roomreservations');
     }
 
-    /**
-     * Load a view file for the openoffice area.
-     */
+
     protected function view($view, $data = []) {
         $viewFile = __DIR__ . '/../views/' . $view . '.php';
         if (file_exists($viewFile)) {
