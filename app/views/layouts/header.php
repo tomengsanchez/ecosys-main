@@ -8,11 +8,16 @@ $basePathStripped = rtrim(BASE_URL, '/');
 // Helper function to check if a nav link is active
 function isActive($linkPath, $currentPath, $basePathStripped) {
     $fullLinkPath = $basePathStripped . '/' . ltrim($linkPath, '/');
-    if ($linkPath === '' && ($currentPath === $basePathStripped . '/' || $currentPath === $basePathStripped)) { // Home/Base URL
+    // Check for exact match or match with trailing slash for base URL
+    if ($linkPath === '' && ($currentPath === $basePathStripped . '/' || $currentPath === $basePathStripped)) {
         return true;
     }
-    if ($linkPath !== '' && strpos($currentPath, $fullLinkPath) === 0) {
-        if ($currentPath === $fullLinkPath || strpos($currentPath, $fullLinkPath . '?') === 0 || strpos($currentPath, $fullLinkPath . '/') === 0) {
+    // Ensure $fullLinkPath is not empty before using it in strpos
+    if ($linkPath !== '' && !empty($fullLinkPath) && strpos($currentPath, $fullLinkPath) === 0) {
+        // Check if it's an exact match or if currentPath is a sub-path (e.g., for dropdown sections)
+        if ($currentPath === $fullLinkPath || 
+            strpos($currentPath, $fullLinkPath . '?') === 0 || 
+            strpos($currentPath, $fullLinkPath . '/') === 0) {
             return true;
         }
     }
@@ -22,10 +27,160 @@ function isActive($linkPath, $currentPath, $basePathStripped) {
 // Helper function to check if a dropdown section is active
 function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped) {
     $fullSectionPrefix = $basePathStripped . '/' . ltrim($sectionPrefix, '/');
-     if (strpos($currentPath, $fullSectionPrefix) === 0) {
+    if (!empty($fullSectionPrefix) && strpos($currentPath, $fullSectionPrefix) === 0) {
         return true;
     }
     return false;
+}
+
+// --- Navigation Configuration Array ---
+$navigationConfig = [
+    [
+        'label' => 'Dashboard',
+        'url' => 'dashboard',
+        'icon' => 'fas fa-tachometer-alt me-1',
+        // No capability means visible to all logged-in users
+    ],
+    [
+        'label' => 'Open Office',
+        'icon' => 'fas fa-door-open me-1',
+        'id' => 'openOfficeDropdown',
+        'base_path' => 'openoffice', // For isDropdownSectionActive
+        // Visibility of this dropdown depends on its children's capabilities
+        'children' => [
+            [
+                'label' => 'Manage Rooms',
+                'url' => 'openoffice/rooms',
+                'capability' => 'VIEW_ROOMS'
+            ],
+            [
+                'label' => 'Room Reservations (Admin)',
+                'url' => 'openoffice/roomreservations',
+                'capability' => 'VIEW_ALL_ROOM_RESERVATIONS'
+            ],
+            [
+                'label' => 'My Reservations',
+                'url' => 'openoffice/myreservations',
+                // No capability, visible to all logged-in users
+            ],
+            // Example for future items (currently commented out in original)
+            // [ 'type' => 'divider' ],
+            // [ 'label' => 'Vehicle Reservation', 'url' => 'openoffice/vehicles', 'capability' => 'MANAGE_VEHICLE_RESERVATIONS' ],
+            // [ 'label' => 'Service Request', 'url' => 'openoffice/services', 'capability' => 'MANAGE_SERVICE_REQUESTS' ],
+        ]
+    ],
+    [
+        'label' => 'IT Department',
+        'icon' => 'fas fa-desktop me-1',
+        'id' => 'itDepartmentDropdown',
+        'base_path' => 'it',
+        'capability' => 'MANAGE_IT_REQUESTS', // Dropdown itself requires this
+        'children' => [
+            [
+                'label' => 'Requests',
+                'url' => 'it/requests',
+                // Inherits capability from parent if not specified, or can be more granular
+            ],
+        ]
+    ],
+    [
+        'label' => 'Rap',
+        'icon' => 'fas fa-calendar-alt me-1',
+        'id' => 'rapDropdown',
+        'base_path' => 'rap',
+        'capability' => 'MANAGE_RAP_CALENDAR',
+        'children' => [
+            [
+                'label' => 'Calendar Of Activities',
+                'url' => 'rap/calendar',
+            ],
+        ]
+    ],
+    [
+        'label' => 'SES',
+        'icon' => 'fas fa-chart-bar me-1',
+        'id' => 'sesDropdown',
+        'base_path' => 'ses',
+        'capability' => 'MANAGE_SES_DATA',
+        'children' => [
+            [
+                'label' => 'SES Data',
+                'url' => 'ses/data',
+            ],
+        ]
+    ],
+];
+
+// --- Function to Render Navigation Items ---
+function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropdown = false) {
+    $html = '';
+    $hasVisibleChild = false;
+
+    foreach ($items as $item) {
+        // Check capability for the item itself
+        if (isset($item['capability']) && !userHasCapability($item['capability'])) {
+            continue; // Skip this item if user doesn't have capability
+        }
+
+        $itemVisible = true; // Assume visible unless children logic says otherwise for dropdowns
+
+        if (isset($item['children'])) {
+            // For a dropdown parent, check if any child is visible
+            $childHtml = renderNavigationItems($item['children'], $currentPath, $basePathStripped, true);
+            if (empty(trim($childHtml))) { // No visible children
+                 // If dropdown parent has its own capability, it might still be shown if that capability is met.
+                 // If no capability on parent, and no children, then hide.
+                if (!isset($item['capability'])) { // If parent has no capability of its own and no visible children, hide it
+                    $itemVisible = false;
+                }
+            }
+            if ($itemVisible) $hasVisibleChild = true; // Mark that at least one child (or parent itself) is visible
+        } else {
+             if (isset($item['capability']) && !userHasCapability($item['capability'])) {
+                $itemVisible = false;
+            }
+            if ($itemVisible) $hasVisibleChild = true;
+        }
+        
+        if (!$itemVisible) {
+            continue;
+        }
+
+
+        if (isset($item['type']) && $item['type'] === 'divider') {
+            $html .= '<li><hr class="dropdown-divider"></li>';
+        } elseif (isset($item['children'])) {
+            // Render dropdown parent
+            $childContent = renderNavigationItems($item['children'], $currentPath, $basePathStripped, true);
+            if (!empty(trim($childContent))) { // Only render dropdown if it has visible children
+                $activeClass = isDropdownSectionActive($item['base_path'] ?? $item['url'] ?? '', $currentPath, $basePathStripped) ? 'active' : '';
+                $html .= '<li class="nav-item dropdown">';
+                $html .= '<a class="nav-link dropdown-toggle ' . $activeClass . '" href="#" id="' . htmlspecialchars($item['id']) . '" role="button" data-bs-toggle="dropdown" aria-expanded="false">';
+                if (isset($item['icon'])) {
+                    $html .= '<i class="' . htmlspecialchars($item['icon']) . '"></i>';
+                }
+                $html .= htmlspecialchars($item['label']);
+                $html .= '</a>';
+                $html .= '<ul class="dropdown-menu" aria-labelledby="' . htmlspecialchars($item['id']) . '">';
+                $html .= $childContent;
+                $html .= '</ul></li>';
+                 if (!$isDropdown) $hasVisibleChild = true;
+            }
+        } else {
+            // Render single link item
+            $activeClass = isActive($item['url'], $currentPath, $basePathStripped) ? 'active' : '';
+            $itemClass = $isDropdown ? 'dropdown-item' : 'nav-link';
+            $html .= $isDropdown ? '<li>' : '<li class="nav-item">';
+            $html .= '<a class="' . $itemClass . ' ' . $activeClass . '" href="' . BASE_URL . ltrim($item['url'], '/') . '">';
+            if (isset($item['icon']) && !$isDropdown) { // Icons usually for top-level nav-links
+                $html .= '<i class="' . htmlspecialchars($item['icon']) . '"></i>';
+            }
+            $html .= htmlspecialchars($item['label']);
+            $html .= '</a></li>';
+            if (!$isDropdown) $hasVisibleChild = true;
+        }
+    }
+    return $isDropdown ? $html : ($hasVisibleChild ? $html : '');
 }
 
 ?>
@@ -77,92 +232,17 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
         </button>
         <div class="collapse navbar-collapse" id="mainNavbar">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <?php if (isLoggedIn()): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo isActive('dashboard', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'dashboard'; ?>">
-                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                        </a>
-                    </li>
-
-                    <?php 
-                    // Determine if Open Office dropdown should be shown
-                    // Users can see "Manage Rooms" if they have VIEW_ROOMS (or the legacy MANAGE_ROOMS)
-                    // Users can see "Room Reservations" (admin view) if they have VIEW_ALL_ROOM_RESERVATIONS
-                    // All logged-in users can see "My Reservations"
-                    $showOpenOfficeDropdown = userHasCapability('VIEW_ROOMS') || 
-                                              userHasCapability('VIEW_ALL_ROOM_RESERVATIONS') ||
-                                              isLoggedIn(); 
-                                              
-                    if ($showOpenOfficeDropdown):
-                    ?>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('openoffice', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="openOfficeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-door-open me-1"></i>Open Office
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="openOfficeDropdown">
-                            <?php if (userHasCapability('VIEW_ROOMS')): ?>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Manage Rooms</a></li>
-                            <?php endif; ?>
-                            
-                            <?php if (userHasCapability('VIEW_ALL_ROOM_RESERVATIONS')): // Corrected capability check ?>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/roomreservations', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/roomreservations'; ?>">Room Reservations (Admin)</a></li>
-                            <?php endif; ?>
-                            
-                            <?php if (isLoggedIn()): // All logged-in users can see their own reservations ?>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/myreservations', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/myreservations'; ?>">My Reservations</a></li>
-                            <?php endif; ?>
-                            
-                            <?php /* Example for future items
-                            <?php if (userHasCapability('MANAGE_VEHICLE_RESERVATIONS')): ?>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/vehicles', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/vehicles'; ?>">Vehicle Reservation</a></li>
-                            <?php endif; ?>
-                             <?php if (userHasCapability('MANAGE_SERVICE_REQUESTS')): ?>
-                                <li><a class="dropdown-item <?php echo isActive('openoffice/services', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/services'; ?>">Service Request</a></li>
-                            <?php endif; ?>
-                            */ ?>
-                        </ul>
-                    </li>
-                    <?php endif; ?>
-
-
-                    <?php if (userHasCapability('MANAGE_IT_REQUESTS')): ?>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('it', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="itDepartmentDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-desktop me-1"></i>IT Department
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="itDepartmentDropdown">
-                            <li><a class="dropdown-item <?php echo isActive('it/requests', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'it/requests'; ?>">Requests</a></li>
-                        </ul>
-                    </li>
-                    <?php endif; ?>
-
-                    <?php if (userHasCapability('MANAGE_RAP_CALENDAR')): ?>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('rap', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="rapDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-calendar-alt me-1"></i>Rap
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="rapDropdown">
-                            <li><a class="dropdown-item <?php echo isActive('rap/calendar', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'rap/calendar'; ?>">Calendar Of Activities</a></li>
-                        </ul>
-                    </li>
-                    <?php endif; ?>
-
-                    <?php if (userHasCapability('MANAGE_SES_DATA')): ?>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('ses', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="sesDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-chart-bar me-1"></i>SES
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="sesDropdown">
-                            <li><a class="dropdown-item <?php echo isActive('ses/data', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'ses/data'; ?>">SES Data</a></li>
-                        </ul>
-                    </li>
-                    <?php endif; ?>
-                <?php endif; ?>
+                <?php 
+                if (isLoggedIn()) {
+                    // Render the dynamic navigation items
+                    echo renderNavigationItems($navigationConfig, $currentPath, $basePathStripped);
+                }
+                ?>
             </ul>
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                  <?php if (isLoggedIn()): ?>
                     <?php 
+                    // Admin dropdown remains hardcoded for now, can be integrated later
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
