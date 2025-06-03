@@ -7,7 +7,9 @@
  */
 class DashboardController {
     private $pdo;
-    private $objectModel; 
+    // private $objectModel; // Will be replaced
+    private $reservationModel; // For reservation-specific data
+    private $baseObjectModel;  // For other object types if needed (e.g. room details)
     private $userModel;   
 
     /**
@@ -17,7 +19,9 @@ class DashboardController {
      */
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
-        $this->objectModel = new ObjectModel($this->pdo); 
+        // $this->objectModel = new ObjectModel($this->pdo); // Old
+        $this->reservationModel = new ReservationModel($this->pdo); // New
+        $this->baseObjectModel = new BaseObjectModel($this->pdo);   // New
         $this->userModel = new UserModel($this->pdo);     
 
         if (!isLoggedIn()) {
@@ -29,16 +33,17 @@ class DashboardController {
      * Display the main dashboard page.
      */
     public function index() {
-        // --- Fetch and Process Data for Calendar ---
         $calendarEvents = [];
-        $reservations = $this->objectModel->getObjectsByConditions(
-            'reservation', 
+        // Fetch reservations using ReservationModel's specific or inherited method
+        $reservations = $this->reservationModel->getAllReservations(
             ['object_status' => ['pending', 'approved']] 
+            // BaseObjectModel's getObjectsByConditions is called via ReservationModel
         );
 
         if ($reservations) {
             foreach ($reservations as $res) {
-                $room = $this->objectModel->getObjectById($res['object_parent']);
+                // Use BaseObjectModel to get room details (as RoomModel isn't created yet)
+                $room = $this->baseObjectModel->getObjectById($res['object_parent']);
                 $roomName = $room ? $room['object_title'] : 'Unknown Room';
 
                 $user = $this->userModel->findUserById($res['object_author']);
@@ -49,14 +54,12 @@ class DashboardController {
                     $color = '#5cb85c'; // Green for 'approved'
                 }
 
-                // Get raw start and end times
                 $rawStartTime = $res['meta']['reservation_start_datetime'] ?? '';
                 $rawEndTime = $res['meta']['reservation_end_datetime'] ?? '';
 
-                // Create the event array for FullCalendar
                 $calendarEvents[] = [
                     'title' => $roomName . ' (' . $userName . ')',
-                    'start' => $rawStartTime, // FullCalendar needs ISO-like format for 'start' and 'end'
+                    'start' => $rawStartTime, 
                     'end' => $rawEndTime,
                     'color' => $color,
                     'extendedProps' => [
@@ -64,8 +67,8 @@ class DashboardController {
                         'status' => ucfirst($res['object_status']),
                         'roomName' => $roomName,
                         'userName' => $userName,
-                        'formattedStartTime' => format_datetime_for_display($rawStartTime), // Pre-formatted for tooltip
-                        'formattedEndTime' => format_datetime_for_display($rawEndTime)    // Pre-formatted for tooltip
+                        'formattedStartTime' => format_datetime_for_display($rawStartTime),
+                        'formattedEndTime' => format_datetime_for_display($rawEndTime)
                     ]
                 ];
             }
@@ -75,7 +78,7 @@ class DashboardController {
             'pageTitle' => 'Dashboard',
             'welcomeMessage' => 'Welcome to your dashboard, ' . htmlspecialchars($_SESSION['display_name'] ?? 'User') . '!',
             'breadcrumbs' => [
-                ['label' => 'Home', 'url' => ''],
+                ['label' => 'Home', 'url' => ''], // Assuming '' is the base for home
                 ['label' => 'Dashboard']
             ],
             'calendarEvents' => json_encode($calendarEvents) 
