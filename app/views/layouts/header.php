@@ -44,6 +44,27 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
         .main-content { min-height: calc(100vh - 70px - 70px - 3rem); /* Full viewport - navbar - footer - margins */ }
         footer { line-height: 1; }
         .navbar-nav .dropdown-menu { min-width: 200px; } /* Ensure dropdowns have enough width */
+
+        /* FullCalendar text wrapping fixes */
+        .fc-event-main-frame { /* Container for event content */
+            white-space: normal; /* Allow text to wrap */
+            overflow-wrap: break-word; /* Break long words if necessary */
+            display: block; /* Ensure it can take up vertical space */
+        }
+        .fc-event-title { /* The event title itself */
+            white-space: normal !important; /* Ensure wrapping, override other styles */
+            overflow-wrap: break-word;
+            display: block; /* Ensure it takes up block space for wrapping */
+            padding: 2px 0; /* Add a little padding if needed */
+        }
+        .fc-daygrid-event { /* General daygrid event container */
+             white-space: normal; /* Allow wrapping for the whole event block */
+             overflow: visible !important; /* Ensure content isn't clipped */
+             /* Adjust height if necessary, or let it grow */
+        }
+        .fc-daygrid-event .fc-event-main {
+            overflow: visible; /* Ensure inner content is also visible */
+        }
     </style>
 </head>
 <body>
