@@ -4,15 +4,14 @@
  * OpenOfficeController
  *
  * Handles operations related to the Open Office module, including Rooms and Reservations.
- * IMPORTANT: Ensure this file is named OpenofficeController.php (lowercase 'o' in office)
- * if your file system is case-sensitive, to match the router's expectation.
  */
 class OpenOfficeController {
     private $pdo;
     private $reservationModel; // For reservation-specific operations
     private $roomModel;        // For room-specific operations
-    private $userModel;
-    private $optionModel;
+    private $userModel; 
+    private $optionModel; 
+    // private $baseObjectModel; // Can be removed if all object types have specific models
 
     /**
      * Constructor
@@ -21,10 +20,11 @@ class OpenOfficeController {
      */
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
-        $this->reservationModel = new ReservationModel($this->pdo);
+        $this->reservationModel = new ReservationModel($this->pdo); 
         $this->roomModel = new RoomModel($this->pdo); // Instantiate RoomModel
-        $this->userModel = new UserModel($this->pdo);
-        $this->optionModel = new OptionModel($this->pdo);
+        $this->userModel = new UserModel($this->pdo); 
+        $this->optionModel = new OptionModel($this->pdo); 
+        // $this->baseObjectModel = new BaseObjectModel($this->pdo); // BaseObjectModel might not be needed directly now
 
         if (!isLoggedIn()) {
             redirect('auth/login');
@@ -42,79 +42,15 @@ class OpenOfficeController {
             redirect('dashboard');
         }
 
-        // Data is now primarily loaded by DataTables via AJAX
-        // $rooms = $this->roomModel->getAllRooms(); // This line is no longer strictly needed here for the view
+        $rooms = $this->roomModel->getAllRooms(); // Use RoomModel
         
         $data = [
             'pageTitle' => 'Manage Rooms',
-            // 'rooms' => $rooms, // Not passing rooms directly anymore
+            'rooms' => $rooms,
             'breadcrumbs' => [['label' => 'Open Office', 'url' => 'openoffice/rooms'], ['label' => 'Rooms List']]
         ];
         $this->view('openoffice/rooms_list', $data);
     }
-
-    /**
-     * AJAX endpoint to fetch room data for DataTables.
-     */
-    public function ajaxGetRooms() {
-        header('Content-Type: application/json');
-
-        if (!isLoggedIn() || !userHasCapability('VIEW_ROOMS')) {
-            echo json_encode([
-                "draw" => intval($_GET['draw'] ?? 0),
-                "recordsTotal" => 0,
-                "recordsFiltered" => 0,
-                "data" => [],
-                "error" => "Not authorized to view rooms."
-            ]);
-            exit;
-        }
-
-        $rooms = $this->roomModel->getAllRooms(['include_meta' => true]); // Fetch rooms with metadata
-        $data = [];
-
-        if ($rooms) {
-            foreach ($rooms as $room) {
-                $actionsHtml = '';
-                if (userHasCapability('EDIT_ROOMS')) {
-                    $actionsHtml .= '<a href="' . BASE_URL . 'openoffice/editRoom/' . htmlspecialchars($room['object_id']) . '" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>';
-                }
-                if (userHasCapability('DELETE_ROOMS')) {
-                    $actionsHtml .= ' <a href="' . BASE_URL . 'openoffice/deleteRoom/' . htmlspecialchars($room['object_id']) . '" 
-                                       class="btn btn-sm btn-danger" title="Delete"
-                                       onclick="return confirm(\'Are you sure you want to delete the room &quot;' . htmlspecialchars(addslashes($room['object_title'])) . '&quot;? This may affect existing reservations.\');">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </a>';
-                }
-                 // Link to create a reservation for this room
-                if (userHasCapability('CREATE_ROOM_RESERVATIONS')) {
-                     $actionsHtml .= ' <a href="' . BASE_URL . 'openoffice/createreservation/' . htmlspecialchars($room['object_id']) . '" class="btn btn-sm btn-success ms-1" title="Book Room"><i class="fas fa-calendar-plus"></i></a>';
-                }
-
-
-                $data[] = [
-                    "id" => htmlspecialchars($room['object_id']),
-                    "name" => htmlspecialchars($room['object_title']),
-                    "capacity" => htmlspecialchars($room['meta']['room_capacity'] ?? 'N/A'),
-                    "location" => htmlspecialchars($room['meta']['room_location'] ?? 'N/A'),
-                    "equipment" => nl2br(htmlspecialchars($room['meta']['room_equipment'] ?? 'N/A')),
-                    "status" => '<span class="badge bg-' . ($room['object_status'] === 'available' ? 'success' : ($room['object_status'] === 'maintenance' ? 'warning text-dark' : 'danger')) . '">' . htmlspecialchars(ucfirst($room['object_status'])) . '</span>',
-                    "modified" => htmlspecialchars(format_datetime_for_display($room['object_modified'])),
-                    "actions" => $actionsHtml
-                ];
-            }
-        }
-
-        $output = [
-            "draw"            => intval($_GET['draw'] ?? 0), // Sanitize draw parameter
-            "recordsTotal"    => count($data), // For client-side processing, total is same as filtered
-            "recordsFiltered" => count($data), // For client-side processing
-            "data"            => $data
-        ];
-        echo json_encode($output);
-        exit; // Crucial to prevent any further output
-    }
-
 
     /**
      * Display form to add a new room OR process adding a new room.
@@ -332,7 +268,7 @@ class OpenOfficeController {
         $data = [
             'pageTitle' => 'Manage Room Reservations',
             'breadcrumbs' => [
-                ['label' => 'Open Office', 'url' => 'openoffice/rooms'], // Corrected to a valid Open Office link
+                ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
                 ['label' => 'Manage Room Reservations']
             ],
             'reservation_statuses' => ['pending' => 'Pending', 'approved' => 'Approved', 'denied' => 'Denied', 'cancelled' => 'Cancelled']
@@ -349,7 +285,7 @@ class OpenOfficeController {
 
         if (!userHasCapability('VIEW_ALL_ROOM_RESERVATIONS')) {
             echo json_encode(['error' => 'Permission denied.', 'data' => [], 'pagination' => null]);
-            exit;
+            return;
         }
 
         $page = isset($_POST['page']) ? (int)$_POST['page'] : 1;
@@ -374,10 +310,13 @@ class OpenOfficeController {
             'offset' => $offset
         ];
 
+        // Fetch reservations using ReservationModel, which now extends BaseObjectModel
+        // The getObjectsByConditions method in BaseObjectModel needs to handle the searchTerm
         $reservations = $this->reservationModel->getObjectsByConditions('reservation', $conditions, $args, $searchTerm);
         
+        // Get total count for pagination
         $totalRecords = $this->reservationModel->countObjectsByConditions('reservation', $conditions, $searchTerm);
-        $totalPages = $totalRecords > 0 ? ceil($totalRecords / $limit) : 0;
+        $totalPages = ceil($totalRecords / $limit);
 
         $enrichedReservations = [];
         if ($reservations) {
@@ -394,6 +333,7 @@ class OpenOfficeController {
                 } else {
                     $res['user_display_name'] = 'N/A';
                 }
+                // Add formatted dates for easier display in JS
                 $res['formatted_start_datetime'] = format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '');
                 $res['formatted_end_datetime'] = format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '');
                 $res['formatted_object_date'] = format_datetime_for_display($res['object_date']);
@@ -413,7 +353,7 @@ class OpenOfficeController {
         ];
 
         echo json_encode($response);
-        exit; 
+        exit; // Important to prevent further output
     }
 
 
@@ -428,9 +368,9 @@ class OpenOfficeController {
             redirect('openoffice/rooms');
         }
         $roomId = (int)$roomId;
-        $room = $this->roomModel->getRoomById($roomId); 
+        $room = $this->roomModel->getRoomById($roomId); // Use RoomModel
 
-        if (!$room || $room['object_status'] !== 'available') { 
+        if (!$room || $room['object_status'] !== 'available') { // getRoomById ensures it's a room
             $_SESSION['error_message'] = 'This room is not available for reservation or does not exist.';
             redirect('openoffice/rooms');
         }
@@ -438,7 +378,7 @@ class OpenOfficeController {
         $approvedReservationsData = [];
         $approvedRoomReservations = $this->reservationModel->getReservationsByRoomId(
             $roomId,
-            ['o.object_status' => 'approved'] // Ensure alias is used if model expects it
+            ['object_status' => 'approved'] 
         );
 
         if ($approvedRoomReservations) {
@@ -455,7 +395,7 @@ class OpenOfficeController {
         $commonData = [
             'pageTitle' => 'Book Room: ' . htmlspecialchars($room['object_title']),
             'room' => $room,
-            'approved_reservations_data_for_js' => $approvedReservationsData, // Pass the PHP array directly
+            'approved_reservations_json' => json_encode($approvedReservationsData), 
             'breadcrumbs' => [
                 ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
                 ['label' => 'Rooms', 'url' => 'openoffice/rooms'], 
@@ -557,136 +497,29 @@ class OpenOfficeController {
         }
     }
 
-    /**
-     * AJAX endpoint to get queue information for a specific room and time slot.
-     */
-    public function getSlotQueueInfo() {
-        header('Content-Type: application/json');
-        $roomId = filter_input(INPUT_GET, 'roomId', FILTER_VALIDATE_INT);
-        $date = filter_input(INPUT_GET, 'date', FILTER_SANITIZE_STRING);
-        $slot = filter_input(INPUT_GET, 'slot', FILTER_SANITIZE_STRING); // e.g., "08:00-09:00"
-
-        if (!$roomId || !$date || !$slot) {
-            echo json_encode(['error' => 'Missing parameters.']);
-            exit;
-        }
-
-        $timeParts = explode('-', $slot);
-        if (count($timeParts) !== 2) {
-            echo json_encode(['error' => 'Invalid slot format.']);
-            exit;
-        }
-
-        $startTimeStr = $date . ' ' . trim($timeParts[0]) . ':00';
-        $endTimeStr = $date . ' ' . trim($timeParts[1]) . ':00';
-
-        try {
-            new DateTime($startTimeStr); // Validate date/time format
-            new DateTime($endTimeStr);
-        } catch (Exception $e) {
-            echo json_encode(['error' => 'Invalid date or time format in slot.']);
-            exit;
-        }
-        
-        $conflictingPending = $this->reservationModel->getConflictingReservations(
-            $roomId, $startTimeStr, $endTimeStr, ['pending']
-        );
-
-        if ($conflictingPending === false) {
-            echo json_encode(['error' => 'Could not retrieve queue information.']);
-            exit;
-        }
-        echo json_encode(['pendingCount' => count($conflictingPending)]);
-        exit;
-    }
-
-
     public function myreservations() {
         $userId = $_SESSION['user_id'];
-        // Data will be loaded by DataTables via AJAX
+        $myReservations = $this->reservationModel->getReservationsByUserId($userId, [
+            'orderby' => 'object_date', 'orderdir' => 'DESC', 'include_meta' => true
+        ]);
+        
+        if ($myReservations) {
+            foreach ($myReservations as &$res) {
+                 if (!empty($res['object_parent'])) { 
+                    $roomFromDb = $this->roomModel->getRoomById($res['object_parent']); // Use RoomModel
+                    $res['room_name'] = $roomFromDb ? $roomFromDb['object_title'] : 'Unknown Room';
+                } else { $res['room_name'] = 'N/A'; }
+            }
+            unset($res);
+        }
+
         $data = [
-            'pageTitle' => 'My Room Reservations',
-            // 'reservations' => $myReservations, // Not passing directly anymore
+            'pageTitle' => 'My Room Reservations', 'reservations' => $myReservations,
             'breadcrumbs' => [['label' => 'Open Office', 'url' => 'openoffice/rooms'], ['label' => 'My Reservations']],
             'reservation_statuses' => ['pending' => 'Pending', 'approved' => 'Approved', 'denied' => 'Denied', 'cancelled' => 'Cancelled']
         ];
         $this->view('openoffice/my_reservations_list', $data); 
     }
-
-    /**
-     * AJAX endpoint to fetch a user's own reservations.
-     */
-    public function ajaxGetUserReservations() {
-        header('Content-Type: application/json');
-        if (!isLoggedIn()) {
-            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not logged in"]);
-            exit;
-        }
-
-        $userId = $_SESSION['user_id'];
-        $myReservations = $this->reservationModel->getReservationsByUserId($userId, [
-            'orderby' => 'o.object_date', // Ensure alias if needed by BaseObjectModel
-            'orderdir' => 'DESC',
-            'include_meta' => true
-        ]);
-        
-        $data = [];
-        if ($myReservations) {
-            foreach ($myReservations as $res) {
-                $roomName = 'N/A';
-                if (!empty($res['object_parent'])) { 
-                    $roomFromDb = $this->roomModel->getRoomById($res['object_parent']);
-                    $roomName = $roomFromDb ? $roomFromDb['object_title'] : 'Unknown Room';
-                }
-
-                $statusKey = $res['object_status'] ?? 'unknown';
-                $statusLabel = ucfirst($statusKey);
-                $badgeClass = 'bg-secondary';
-                if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
-                else if ($statusKey === 'approved') $badgeClass = 'bg-success';
-                else if ($statusKey === 'denied') $badgeClass = 'bg-danger';
-                else if ($statusKey === 'cancelled') $badgeClass = 'bg-info text-dark';
-                $statusHtml = "<span class=\"badge {$badgeClass}\">" . htmlspecialchars($statusLabel) . "</span>";
-
-                $actionsHtml = '';
-                if ($res['object_status'] === 'pending' && userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')) {
-                    $actionsHtml .= '<a href="' . BASE_URL . 'openoffice/cancelreservation/' . htmlspecialchars($res['object_id']) . '" 
-                                       class="btn btn-sm btn-warning text-dark" title="Cancel Reservation"
-                                       onclick="return confirm(\'Are you sure you want to cancel this reservation?\');">
-                                        <i class="fas fa-times-circle"></i> Cancel
-                                    </a>';
-                } else {
-                    $actionsHtml = '<span class="text-muted small">No actions</span>';
-                }
-                // Add edit action if capability exists and status is pending
-                // if ($res['object_status'] === 'pending' && userHasCapability('EDIT_OWN_ROOM_RESERVATIONS')) {
-                // $actionsHtml .= ' <a href="' . BASE_URL . 'openoffice/editMyReservation/' . htmlspecialchars($res['object_id']) . '" class="btn btn-sm btn-info ms-1" title="Edit (Soon)"><i class="fas fa-edit"></i></a>';
-                // }
-
-
-                $data[] = [
-                    "id" => htmlspecialchars($res['object_id']),
-                    "room" => htmlspecialchars($roomName),
-                    "purpose" => nl2br(htmlspecialchars($res['object_content'] ?? 'N/A')),
-                    "start_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '')),
-                    "end_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '')),
-                    "requested_on" => htmlspecialchars(format_datetime_for_display($res['object_date'])),
-                    "status" => $statusHtml,
-                    "actions" => $actionsHtml
-                ];
-            }
-        }
-
-        $output = [
-            "draw"            => intval($_GET['draw'] ?? 0),
-            "recordsTotal"    => count($data),
-            "recordsFiltered" => count($data),
-            "data"            => $data
-        ];
-        echo json_encode($output);
-        exit;
-    }
-
 
     public function cancelreservation($reservationId = null) {
         if (!userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')) {
@@ -715,6 +548,9 @@ class OpenOfficeController {
     }
 
     public function approvereservation($reservationId = null) {
+        // This method is called by an AJAX request from reservations_list.php
+        // It should ideally return JSON, but for now, it sets a session message and redirects.
+        // The AJAX handler in reservations_list.php will then refresh the list.
         if (!userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')) {
             if ($this->isAjaxRequest()) {
                 header('Content-Type: application/json');
@@ -759,11 +595,13 @@ class OpenOfficeController {
                     if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) { 
                         $success = true;
                         $message = 'Reservation approved successfully.';
+                        // Email notifications
                         $user = $this->userModel->findUserById($reservationToApprove['object_author']);
                         $roomFromDb = $this->roomModel->getRoomById($roomId); 
                         if ($user && !empty($user['user_email']) && $roomFromDb) {
                             send_system_email($user['user_email'], "Your Reservation for {$roomFromDb['object_title']} has been Approved", "Dear {$user['display_name']},\n\nYour reservation for '{$roomFromDb['object_title']}' from " . format_datetime_for_display($startTime) . " to " . format_datetime_for_display($endTime) . " has been approved.\n\nPurpose: {$reservationToApprove['object_content']}");
                         }
+                        // Auto-deny conflicting pending reservations
                         $overlappingPending = $this->reservationModel->getConflictingReservations($roomId, $startTime, $endTime, ['pending'], $reservationId);
                         if ($overlappingPending) {
                             $deniedCount = 0;
@@ -797,6 +635,9 @@ class OpenOfficeController {
     }
 
     public function denyreservation($reservationId = null) {
+        // This method is called by an AJAX request from reservations_list.php
+        // It should ideally return JSON, but for now, it sets a session message and redirects.
+        // The AJAX handler in reservations_list.php will then refresh the list.
         if (!userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')) {
              if ($this->isAjaxRequest()) {
                 header('Content-Type: application/json');
@@ -830,6 +671,7 @@ class OpenOfficeController {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) { 
                 $success = true;
                 $message = 'Reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
+                // Email notification
                 $user = $this->userModel->findUserById($reservation['object_author']);
                 $roomFromDb = $this->roomModel->getRoomById($reservation['object_parent']); 
                 if ($user && !empty($user['user_email']) && $roomFromDb) {
@@ -850,6 +692,7 @@ class OpenOfficeController {
         }
     }
 
+    // Helper to check if it's an AJAX request (basic check)
     private function isAjaxRequest() {
         return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
     }
@@ -860,8 +703,7 @@ class OpenOfficeController {
             $_SESSION['error_message'] = "You do not have permission to edit your reservations.";
             redirect('openoffice/myreservations');
         }
-        // Basic placeholder - full implementation would involve a form similar to createreservation
-        $_SESSION['message'] = "Editing reservations (ID: {$reservationId}) is not yet fully implemented. This would typically involve loading the reservation into a form, allowing changes, and re-validating conflicts.";
+        $_SESSION['message'] = "Editing reservations is not yet implemented. Reservation ID: {$reservationId}";
         redirect('openoffice/myreservations');
     }
 
@@ -870,8 +712,7 @@ class OpenOfficeController {
             $_SESSION['error_message'] = "You do not have permission to edit this reservation.";
             redirect('openoffice/roomreservations');
         }
-        // Basic placeholder
-        $_SESSION['admin_message'] = "Editing any reservation (ID: {$reservationId}) is not yet fully implemented. This would allow admins to modify details of any reservation, potentially overriding some rules or re-assigning.";
+        $_SESSION['admin_message'] = "Editing any reservation is not yet implemented. Reservation ID: {$reservationId}";
         redirect('openoffice/roomreservations');
     }
 
@@ -880,19 +721,7 @@ class OpenOfficeController {
             $_SESSION['error_message'] = "You do not have permission to delete reservation records.";
             redirect('openoffice/roomreservations');
         }
-        // Basic placeholder - full implementation would involve careful consideration of data integrity
-        // For now, let's assume it means a hard delete of the reservation object.
-        $reservationId = (int)$reservationId;
-        $reservation = $this->reservationModel->getObjectById($reservationId);
-        if ($reservation && $reservation['object_type'] === 'reservation') {
-            if ($this->reservationModel->deleteObject($reservationId)) {
-                 $_SESSION['admin_message'] = "Reservation record ID {$reservationId} deleted successfully.";
-            } else {
-                 $_SESSION['error_message'] = "Could not delete reservation record ID {$reservationId}.";
-            }
-        } else {
-             $_SESSION['error_message'] = "Reservation record ID {$reservationId} not found.";
-        }
+        $_SESSION['admin_message'] = "Deleting reservation records is not yet implemented. Reservation ID: {$reservationId}";
         redirect('openoffice/roomreservations');
     }
 
@@ -904,9 +733,7 @@ class OpenOfficeController {
             require_once $viewFile;
         } else {
             error_log("OpenOffice view file not found: {$viewFile}");
-            // More user-friendly error for production
-            // For development, die() is okay.
-            die('Error: View not found. Please contact support. Attempted to load: ' . htmlspecialchars($view));
+            die('Error: View not found. Please contact support. Attempted to load: ' . $view);
         }
     }
 }
