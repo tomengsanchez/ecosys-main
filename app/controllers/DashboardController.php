@@ -7,10 +7,10 @@
  */
 class DashboardController {
     private $pdo;
-    // private $objectModel; // Will be replaced
     private $reservationModel; // For reservation-specific data
-    private $baseObjectModel;  // For other object types if needed (e.g. room details)
+    private $roomModel;        // For room-specific data
     private $userModel;   
+    // private $baseObjectModel; // Can be removed if all object types have specific models
 
     /**
      * Constructor
@@ -19,10 +19,10 @@ class DashboardController {
      */
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
-        // $this->objectModel = new ObjectModel($this->pdo); // Old
-        $this->reservationModel = new ReservationModel($this->pdo); // New
-        $this->baseObjectModel = new BaseObjectModel($this->pdo);   // New
+        $this->reservationModel = new ReservationModel($this->pdo); 
+        $this->roomModel = new RoomModel($this->pdo); // Instantiate RoomModel
         $this->userModel = new UserModel($this->pdo);     
+        // $this->baseObjectModel = new BaseObjectModel($this->pdo); // May not be needed directly
 
         if (!isLoggedIn()) {
             redirect('auth/login'); 
@@ -34,16 +34,14 @@ class DashboardController {
      */
     public function index() {
         $calendarEvents = [];
-        // Fetch reservations using ReservationModel's specific or inherited method
         $reservations = $this->reservationModel->getAllReservations(
             ['object_status' => ['pending', 'approved']] 
-            // BaseObjectModel's getObjectsByConditions is called via ReservationModel
         );
 
         if ($reservations) {
             foreach ($reservations as $res) {
-                // Use BaseObjectModel to get room details (as RoomModel isn't created yet)
-                $room = $this->baseObjectModel->getObjectById($res['object_parent']);
+                // Use RoomModel to get room details
+                $room = $this->roomModel->getRoomById($res['object_parent']);
                 $roomName = $room ? $room['object_title'] : 'Unknown Room';
 
                 $user = $this->userModel->findUserById($res['object_author']);
@@ -78,7 +76,7 @@ class DashboardController {
             'pageTitle' => 'Dashboard',
             'welcomeMessage' => 'Welcome to your dashboard, ' . htmlspecialchars($_SESSION['display_name'] ?? 'User') . '!',
             'breadcrumbs' => [
-                ['label' => 'Home', 'url' => ''], // Assuming '' is the base for home
+                ['label' => 'Home', 'url' => ''], 
                 ['label' => 'Dashboard']
             ],
             'calendarEvents' => json_encode($calendarEvents) 
