@@ -1,7 +1,4 @@
 <?php
-// pageTitle and users array (with department_name) are passed from AdminController's users() method
-
-// Include header
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
@@ -14,7 +11,6 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // Display any session messages
     if (isset($_SESSION['admin_message'])) {
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && strpos(strtolower($_SESSION['admin_message']), 'fail') === false && strpos(strtolower($_SESSION['admin_message']), 'cannot') === false) ? 'success' : 'danger';
         echo '<div class="alert alert-' . $alertType . ' alert-dismissible fade show" role="alert">' . 
@@ -34,8 +30,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
     <?php if (!empty($users) && is_array($users)): ?>
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
+            <table class="table table-striped table-hover datatable-l" id="usersTable"> <thead class="table-dark">
                     <tr>
                         <th>ID</th>
                         <th>Username</th>
@@ -90,6 +85,5 @@ require_once __DIR__ . '/../layouts/header.php';
 </div>
 
 <?php
-// Include footer
 require_once __DIR__ . '/../layouts/footer.php';
 ?>

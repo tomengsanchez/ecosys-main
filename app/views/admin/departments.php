@@ -1,7 +1,4 @@
 <?php
-// pageTitle and departments array (with user_count) are passed from AdminController's departments() method
-
-// Include header
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
@@ -14,7 +11,6 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // Display any session messages
     if (isset($_SESSION['admin_message'])) {
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && strpos(strtolower($_SESSION['admin_message']), 'fail') === false && strpos(strtolower($_SESSION['admin_message']), 'cannot') === false) ? 'success' : 'danger';
         echo '<div class="alert alert-' . $alertType . ' alert-dismissible fade show" role="alert">' . 
@@ -27,8 +23,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
     <?php if (!empty($departments) && is_array($departments)): ?>
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
+            <table class="table table-striped table-hover datatable-l" id="departmentsTable"> <thead class="table-dark">
                     <tr>
                         <th>ID</th>
                         <th>Department Name</th>
@@ -50,14 +45,10 @@ require_once __DIR__ . '/../layouts/header.php';
                                 <a href="<?php echo BASE_URL . 'admin/editDepartment/' . htmlspecialchars($department['department_id']); ?>" class="btn btn-sm btn-primary me-1" title="Edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
-                                <?php 
-                                $deleteDisabled = ($department['user_count'] > 0) ? 'disabled' : '';
-                                $deleteTitle = ($department['user_count'] > 0) ? 'Cannot delete: department has users. Unassign users first or they will be set to NULL.' : 'Delete';
-                                ?>
                                 <a href="<?php echo BASE_URL . 'admin/deleteDepartment/' . htmlspecialchars($department['department_id']); ?>" 
-                                   class="btn btn-sm btn-danger <?php // echo $deleteDisabled; // Uncomment to visually disable if users exist ?>" 
-                                   title="<?php // echo $deleteTitle; // Uncomment for dynamic title ?>"
-                                   onclick="return confirm('Are you sure you want to delete the department &quot;<?php echo htmlspecialchars(addslashes($department['department_name'])); ?>&quot;? Users in this department will be unassigned.');">
+                                   class="btn btn-sm btn-danger" 
+                                   title="Delete"
+                                   onclick="return confirm('Are you sure you want to delete the department &quot;<?php echo htmlspecialchars(addslashes($department['department_name'])); ?>&quot;? Users will be unassigned.');">
                                     <i class="fas fa-trash-alt"></i> Delete
                                 </a>
                             </td>
@@ -72,6 +63,5 @@ require_once __DIR__ . '/../layouts/header.php';
 </div>
 
 <?php
-// Include footer
 require_once __DIR__ . '/../layouts/footer.php';
 ?>

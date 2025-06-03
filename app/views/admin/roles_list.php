@@ -1,7 +1,4 @@
 <?php
-// pageTitle and roles array are passed from AdminController's listRoles() method
-
-// Include header
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
@@ -14,7 +11,6 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // Display any session messages
     if (isset($_SESSION['admin_message'])) {
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && 
                       strpos(strtolower($_SESSION['admin_message']), 'fail') === false && 
@@ -29,8 +25,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
     <?php if (!empty($roles) && is_array($roles)): ?>
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
+            <table class="table table-striped table-hover datatable-l" id="rolesTable"> <thead class="table-dark">
                     <tr>
                         <th>ID</th>
                         <th>Role Key</th>
@@ -60,7 +55,7 @@ require_once __DIR__ . '/../layouts/header.php';
                                 <a href="<?php echo BASE_URL . 'admin/editRole/' . htmlspecialchars($role['role_id']); ?>" class="btn btn-sm btn-primary me-1" title="Edit">
                                     <i class="fas fa-edit"></i> Edit
                                 </a>
-                                <?php if (!$role['is_system_role']): // Prevent deleting system roles ?>
+                                <?php if (!$role['is_system_role']): ?>
                                     <a href="<?php echo BASE_URL . 'admin/deleteRole/' . htmlspecialchars($role['role_id']); ?>" 
                                        class="btn btn-sm btn-danger" title="Delete"
                                        onclick="return confirm('Are you sure you want to delete the role &quot;<?php echo htmlspecialchars(addslashes($role['role_name'])); ?>&quot;? This will also remove its permissions and reassign users to the default role.');">
@@ -83,6 +78,5 @@ require_once __DIR__ . '/../layouts/header.php';
 </div>
 
 <?php
-// Include footer
 require_once __DIR__ . '/../layouts/footer.php';
 ?>
