@@ -1,9 +1,29 @@
 <?php
-// pageTitle, welcomeMessage, and calendarEvents (JSON string) are passed from DashboardController.
+// pageTitle, welcomeMessage are passed from DashboardController.
+// Calendar events are now loaded via AJAX.
 
 // Include header
 require_once __DIR__ . '/../layouts/header.php';
 ?>
+<style>
+    /* Basic styling for the calendar loading overlay */
+    #calendarLoadingOverlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.75); /* Semi-transparent white */
+        z-index: 1000; /* Ensure it's on top of the calendar */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.25rem; /* Match card border radius */
+    }
+    .calendar-relative-container {
+        position: relative; /* Needed for absolute positioning of the overlay */
+    }
+</style>
 
 <div class="dashboard-container">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -23,7 +43,12 @@ require_once __DIR__ . '/../layouts/header.php';
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Room Reservation Calendar</h5>
         </div>
-        <div class="card-body">
+        <div class="card-body calendar-relative-container"> {/* Added class for positioning context */}
+            <div id="calendarLoadingOverlay" style="display: none;">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading events...</span>
+                </div>
+            </div>
             <div id="reservationCalendar" style="max-height: 650px;"></div>
         </div>
         <div class="card-footer bg-light">
@@ -58,11 +83,23 @@ if (isset($_SESSION)) {
 </div>
 
 <script>
+// Wait for the DOM to be fully loaded, then check for jQuery, then initialize FullCalendar
 document.addEventListener('DOMContentLoaded', function() {
-    var calendarEl = document.getElementById('reservationCalendar');
-    if (calendarEl) {
-        var calendarEvents = <?php echo $calendarEvents ?? '[]'; ?>; 
+    let jqueryCheckInterval = setInterval(function() {
+        if (window.jQuery && typeof FullCalendar !== 'undefined') { // Also check if FullCalendar is loaded
+            clearInterval(jqueryCheckInterval);
+            // Now that jQuery and FullCalendar are loaded, initialize the calendar.
+            // We can use $(document).ready or just call the init function directly.
+            initializeDashboardCalendar();
+        }
+    }, 100); // Check every 100ms
+});
 
+function initializeDashboardCalendar() {
+    var calendarEl = document.getElementById('reservationCalendar');
+    var loadingOverlayEl = document.getElementById('calendarLoadingOverlay'); // Get the overlay element
+
+    if (calendarEl && loadingOverlayEl) { // Check if overlay element also exists
         var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth', 
             headerToolbar: {
@@ -70,11 +107,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
             },
-            events: calendarEvents,
-            editable: false, 
-            selectable: true, 
+            events: '<?php echo BASE_URL . "dashboard/ajaxCalendarEvents"; ?>', 
+            
+            loading: function(isLoading) {
+                if (isLoading) {
+                    loadingOverlayEl.style.display = 'flex'; // Show the overlay
+                    console.log('Calendar is loading events...');
+                } else {
+                    loadingOverlayEl.style.display = 'none'; // Hide the overlay
+                    console.log('Calendar events loaded.');
+                }
+            },
             eventDidMount: function(info) {
-                // Tooltip for event details using pre-formatted times
                 var tooltipContent = `
                     <strong>${info.event.extendedProps.roomName || info.event.title}</strong><br>
                     Booked by: ${info.event.extendedProps.userName || 'N/A'}<br>
@@ -84,21 +128,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     Starts: ${info.event.extendedProps.formattedStartTime || 'N/A'}<br>
                     Ends: ${info.event.extendedProps.formattedEndTime || 'N/A'}
                 `;
-                var tooltip = new bootstrap.Tooltip(info.el, {
-                    title: tooltipContent,
-                    placement: 'top',
-                    trigger: 'hover',
-                    container: 'body',
-                    html: true,
-                    sanitize: false // Allow HTML in tooltip, ensure content is safe from PHP side
-                });
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                    var tooltip = new bootstrap.Tooltip(info.el, {
+                        title: tooltipContent,
+                        placement: 'top',
+                        trigger: 'hover',
+                        container: 'body',
+                        html: true,
+                        sanitize: false 
+                    });
+                } else {
+                    info.el.setAttribute('title', 
+                        (info.event.extendedProps.roomName || info.event.title) +
+                        `\nBooked by: ${info.event.extendedProps.userName || 'N/A'}` +
+                        `\nStatus: ${info.event.extendedProps.status || 'N/A'}` +
+                        `\nPurpose: ${info.event.extendedProps.purpose || 'N/A'}` +
+                        `\nStarts: ${info.event.extendedProps.formattedStartTime || 'N/A'}` +
+                        `\nEnds: ${info.event.extendedProps.formattedEndTime || 'N/A'}`
+                    );
+                }
             },
+            eventClick: function(info) {
+                // Example: alert event details or redirect
+                // alert('Event: ' + info.event.title + '\nReservation ID: ' + info.event.extendedProps.reservation_id);
+                // window.location.href = '<?php echo BASE_URL . "openoffice/viewreservation/"; ?>' + info.event.extendedProps.reservation_id;
+                info.jsEvent.preventDefault(); 
+            }
         });
         calendar.render();
     } else {
-        console.error("Calendar element #reservationCalendar not found.");
+        if (!calendarEl) console.error("Calendar element #reservationCalendar not found.");
+        if (!loadingOverlayEl) console.error("Calendar loading overlay element #calendarLoadingOverlay not found.");
     }
-});
+}
 </script>
 
 <?php
