@@ -1,4 +1,5 @@
 <?php
+// sleep(3);
 /**
  * Database Configuration, Session Management, Role/Capability, and Email Definitions
  */
