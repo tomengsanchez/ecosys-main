@@ -1,22 +1,17 @@
 <?php
-// This view is used by AdminController::users()
+// This view is used by OpenOfficeController::roomreservations()
 // Expected variables:
 // - $pageTitle (string)
 // - $breadcrumbs (array)
-// User data is now loaded via AJAX by DataTables
+// - $reservation_statuses (array) - May still be useful for reference or if any client-side logic needs it.
 
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
-<div class="admin-users-container">
+<div class="openoffice-reservations-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Users'); ?></h1>
-        <?php if (userHasCapability('MANAGE_USERS')): // Ensure add button also checks capability ?>
-        <a href="<?php echo BASE_URL . 'admin/addUser'; ?>" class="btn btn-success">
-            <i class="fas fa-plus"></i> Add New User
-        </a>
-        <?php endif; ?>
-    </div>
+        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Room Reservations'); ?></h1>
+        </div>
 
     <?php
     // Session messages display
@@ -40,15 +35,15 @@ require_once __DIR__ . '/../layouts/header.php';
     ?>
 
     <div class="table-responsive">
-        <table class="table table-striped table-hover" id="usersTable"> <thead class="table-dark">
+        <table class="table table-striped table-hover" id="allReservationsTable"> <thead class="table-dark">
                 <tr>
                     <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Display Name</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Registered</th>
+                    <th>Room</th>
+                    <th>User</th>
+                    <th>Purpose</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Requested On</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -65,22 +60,23 @@ require_once __DIR__ . '/../layouts/footer.php';
 
 <script>
 $(document).ready(function() {
-    $('#usersTable').DataTable({
-        "processing": true, 
-        "serverSide": false, // Client-side processing for now
+    $('#allReservationsTable').DataTable({
+        "processing": true, // Optional: show a processing indicator
+        "serverSide": false, // For now, client-side processing of the full dataset.
+                             // Change to true for full server-side processing.
         "ajax": {
-            "url": "<?php echo BASE_URL . 'admin/ajaxGetUsers'; ?>",
+            "url": "<?php echo BASE_URL . 'OpenOffice/ajaxGetAllReservations'; ?>", // Ensure controller name matches
             "type": "GET",
-            "dataSrc": "data" 
+            "dataSrc": "data" // Key in JSON response holding the array of data
         },
         "columns": [
             { "data": "id" },
-            { "data": "username" },
-            { "data": "email" },
-            { "data": "display_name" },
-            { "data": "role" },
-            { "data": "department" },
-            { "data": "registered" },
+            { "data": "room" },
+            { "data": "user" }, // Added User column
+            { "data": "purpose" },
+            { "data": "start_time" },
+            { "data": "end_time" },
+            { "data": "requested_on" },
             { "data": "status" },
             { 
                 "data": "actions",
@@ -88,7 +84,7 @@ $(document).ready(function() {
                 "searchable": false
             }
         ],
-        "order": [[ 0, "desc" ]] // Default sort by ID descending
+        "order": [[ 6, "desc" ]] // Default sort by 'Requested On' (index 6) descending
     });
 });
 </script>

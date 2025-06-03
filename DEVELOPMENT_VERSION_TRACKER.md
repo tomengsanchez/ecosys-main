@@ -1,169 +1,71 @@
-# Development Version Tracker - Mainsystem PHP Project
-
+Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
----
+Version 0.21.0 - Model Refactoring & UI Fixes (2025-06-03)
+Date: 2025-06-03
 
-## Version 0.4.0 - Role-Based Access Control (RBAC) - Basic (2025-05-30)
+Features Implemented & Key Changes:
 
-**Date:** 2025-05-30
+Security & Quality Review:
+Conducted a comprehensive security and quality review of the application.
+Identified areas for improvement, including CSRF protection, consistent authorization, and XSS prevention. (Note: CSRF and other major security fixes are pending implementation based on review).
 
-**Features Implemented:**
+UI and UX Fixes:
+Corrected capability check in app/views/layouts/header.php to ensure administrators can see the "Room Reservations (Admin)" link. Changed check from MANAGE_OPEN_OFFICE_RESERVATIONS to the correct VIEW_ALL_ROOM_RESERVATIONS.
+Improved calendar event display in app/views/layouts/header.php by adding CSS rules to allow event titles to wrap, preventing text cutoff.
 
-* **Database Schema Update:**
-    * Added `user_role` column (VARCHAR(50), default 'user') to the `users` table.
-    * Updated existing admin user (`user_id = 1`) to have the 'admin' role.
-* **`UserModel` Enhancements for Roles:**
-    * SELECT queries (`findUserByUsernameOrEmail`, `findUserById`, `getAllUsers`) now fetch the `user_role`.
-    * `createUser()`: Accepts a `user_role` parameter (defaults to 'user') and stores it.
-    * `updateUser()`: Allows updating the `user_role`.
-* **`AuthController` Update:**
-    * `createUserSession()`: Stores the `user_role` in `$_SESSION['user_role']` upon successful login.
-* **`AdminController` Updates for Role-Based Access:**
-    * Constructor access control now checks `$_SESSION['user_role'] === 'admin'` instead of `user_id == 1`.
-    * `addUser()`: Allows setting `user_role` via form, validates against allowed roles.
-    * `editUser()`: Allows editing `user_role` via form, validates, and prevents changing the role of `user_id = 1` from 'admin'.
-    * `deleteUser()`: Protects the primary super admin (`user_id = 1` with 'admin' role) from deletion.
-* **Admin View Updates for Roles:**
-    * `app/views/admin/users.php`: Displays the `user_role` in the user list table. Delete button logic updated to protect primary admin based on role and ID.
-    * `app/views/admin/user_form.php`: Includes a dropdown menu to select/display `user_role` (admin, editor, user). Safeguards prevent changing the primary admin's role from 'admin'.
-* **Layout (`header.php`) Update:**
-    * "Admin Panel" navigation link is now displayed based on `$_SESSION['user_role'] === 'admin'`.
-    * Added Font Awesome CDN link.
-    * User display name and logout link converted to a Bootstrap dropdown.
+Navigation Refactoring:
+Refactored the main left-aligned navigation menu in app/views/layouts/header.php to be data-driven.
+Introduced a $navigationConfig array and a renderNavigationItems() helper function to dynamically generate menu items based on configuration and user capabilities. This improves maintainability and scalability of the navigation.
+Updated URLs in $navigationConfig to use PascalCase for controller segments (e.g., OpenOffice/rooms) to align with router logic and controller class name prefixes, while ensuring router correctly handles them.
 
-**Key Changes & Fixes:**
+Model Layer Refactoring (Separation of Concerns for Objects):
+Initiated refactoring of ObjectModel.php to separate concerns by object_type.
 
-* Shifted from `user_id`-based admin access to a basic role-based system ('admin', 'editor', 'user').
-* Corrected `xintegrity` to `integrity` attributes for CDN links in `header.php`.
+BaseObjectModel.php Created:
 
-**To-Do / Next Steps (Examples for RBAC):**
+Contains generic database operations applicable to all object types (CRUD on objects table, objectmeta handling, slug generation).
 
-* Implement more granular permissions beyond just 'admin' access (e.g., what 'editor' can do).
-* Create middleware or helper functions for checking permissions for specific actions/controllers.
-* Potentially create a separate table for roles and permissions for a more scalable RBAC system.
+The original ObjectModel.php content was moved here.
 
----
+ReservationModel.php Created:
 
-## Version 0.3.0 - Admin User Management (2025-05-30)
+Extends BaseObjectModel.php.
 
-**Date:** 2025-05-30
+Houses methods specific to 'reservation' objects, such as getConflictingReservations().
 
-**Features Implemented:**
+Includes convenience methods like getAllReservations(), getReservationsByUserId(), and getReservationsByRoomId().
 
-* **`UserModel` Enhancements for Admin:**
-    * `getAllUsers()`: Method to fetch all users for listing.
-    * `createUser()`: Enhanced to be more flexible for admin use (e.g., setting status).
-    * `updateUser()`: Method to update user details, including optional password change (hashed).
-    * `deleteUser()`: Method to delete users, with a safeguard for the super admin (user_id 1) and self-deletion.
-* **`AdminController` User Management Actions:**
-    * `users()`: Displays a list of all users.
-    * `addUser()`: Handles both displaying the form and processing the creation of new users, including validation.
-    * `editUser($userId)`: Handles displaying a prefilled form and processing updates for existing users, including validation and optional password change.
-    * `deleteUser($userId)`: Handles deletion of users, with safeguards.
-* **Admin User Management Views:**
-    * `app/views/admin/users.php`: View to display a table of users with links/buttons for add, edit, and delete actions. Includes session feedback messages and a confirmation dialog for deletion.
-    * `app/views/admin/user_form.php`: Reusable form for both adding and editing users, dynamically adjusting its title, action, and prefilled data. Includes Bootstrap styling and validation feedback.
-* **General Admin UI:**
-    * Session messages (`$_SESSION['admin_message']`, `$_SESSION['error_message']`) used for feedback in the admin user management section.
-    * Basic Font Awesome icons added to buttons in `users.php`.
+RoomModel.php Created:
 
-**Key Changes & Fixes:**
+Extends BaseObjectModel.php.
 
-* Implemented core CRUD (Create, Read, Update, Delete) operations for users within the admin panel.
-* Added basic safeguards against deleting the primary admin account or an admin deleting their own account via the user list.
+Includes methods specific to 'room' objects, such as getRoomById(), getAllRooms(), createRoom(), updateRoom(), and deleteRoom().
 
-**To-Do / Next Steps (Examples for User Management):**
+ObjectModel.php Updated:
 
-* Implement more robust CSRF protection for delete/update actions.
-* Add pagination to the user list for larger numbers of users.
-* Implement search and filtering for the user list.
+Modified to extend BaseObjectModel.php for backward compatibility, with the intention to phase out its direct use in favor of more specific models.
 
----
+Controller Updates & Naming Convention:
 
-## Version 0.2.0 - Administrator Module (2025-05-30)
+Filename Standardization: Advised renaming mainsystem/app/controllers/OpenOfficeController.php to mainsystem/app/controllers/OpenofficeController.php (lowercase 'o' in "office") to align with the router's generated name (ucfirst(strtolower($segment))Controller) and prevent 404 errors on case-sensitive servers. User to perform actual file rename.
 
-**Date:** 2025-05-30
+The openoffice controller (conceptually OpenofficeController.php after rename) updated to instantiate and use ReservationModel.php for reservation-related logic and RoomModel.php for room-related logic.
 
-**Features Implemented:**
+The dashboard controller (DashboardController.php) updated to use ReservationModel.php for fetching reservation data for the calendar and RoomModel.php for associated room details.
 
-* **Admin Controller (`AdminController.php`):**
-    * Created to handle admin-specific logic.
-    * Constructor includes access control:
-        * Checks if user is logged in.
-        * Checks if `$_SESSION['user_id'] == 1` for admin privileges (initial implementation).
-        * Redirects non-admins with an error message.
-    * `index()` method for the main admin dashboard.
-    * `users()` method stub for future user management.
-    * `view()` helper method for loading admin views.
-* **Admin Views:**
-    * Created `app/views/admin/` directory.
-    * `app/views/admin/index.php`: Basic admin dashboard view with placeholder cards for common admin tasks.
-* **Navigation:**
-    * Updated `app/views/layouts/header.php` to display an "Admin Panel" link in the navigation bar.
-    * Admin link is only visible if `$_SESSION['user_id'] == 1`.
-    * Added basic "active" state styling to navigation links.
+Key Benefits of Model Refactoring:
+Clearer separation of concerns, making each model focus on a single entity type.
+Improved code readability, maintainability, and testability.
+Reduced class sizes and better scalability for future object types.
 
-**Key Changes & Fixes:**
+To-Do / Next Steps:
+User to rename OpenOfficeController.php to OpenofficeController.php on their file system.
+Continue implementing recommendations from the security review (e.g., CSRF protection).
+Further refine specific models (RoomModel, ReservationModel) with any additional type-specific logic.
+Consider creating specific models for other object_types if they emerge.
+Ensure comprehensive testing of all functionalities affected by the model refactoring and controller renaming.
 
-* Simplified admin role check to `user_id == 1` for now.
-
-**To-Do / Next Steps (Examples for Admin Module):**
-
-* Implement a proper role-based access control (RBAC) system (e.g., add `user_role` column to `users` table).
-* Implement content management features.
-* Add site settings management.
-
----
-
-## Version 0.1.0 - Initial Setup & Login System (2025-05-30)
-
-**Date:** 2025-05-30
-
-**Features Implemented:**
-
-* **Core Application Structure:**
-    * Basic MVC (Model-View-Controller) pattern established.
-    * `index.php` as the main entry point and basic router.
-    * `config.php` for database credentials and session management.
-    * `.htaccess` for clean URLs.
-* **Database:**
-    * Initial database schema defined in `database_structure.sql` (objects, objectmeta, users, usermeta, terms, term_taxonomy, term_relationships, options).
-    * PDO connection established.
-* **User Authentication:**
-    * `UserModel.php`: Handles user data interaction (finding users).
-    * `AuthController.php`: Manages login form display, login processing, and logout.
-    * Login view (`app/views/auth/login.php`).
-    * Session-based login persistence.
-    * Password hashing (`password_hash()`) and verification (`password_verify()`).
-* **Basic Dashboard:**
-    * `DashboardController.php`: Displays a simple dashboard for logged-in users.
-    * Dashboard view (`app/views/dashboard/index.php`).
-    * Route protection (redirects to login if not authenticated).
-* **Layout & Styling:**
-    * Basic HTML layout with `header.php` and `footer.php`.
-    * Integrated Bootstrap 5.3.6 for styling.
-    * Integrated jQuery 3.7.1.
-    * Login form styled with Bootstrap.
-
-**Key Changes & Fixes:**
-
-* Resolved `SQLSTATE[HY093]: Invalid parameter number` error in `UserModel` by using distinct named placeholders in the SQL query for `findUserByUsernameOrEmail`.
-* Corrected routing logic in `index.php` to properly handle default actions (e.g., `/dashboard` now correctly maps to `DashboardController::index()`).
-* Fixed typos in `integrity` attributes for Bootstrap CSS/JS CDN links.
-
-**To-Do / Next Steps (Examples):**
-
-* Implement user registration.
-* Add password recovery functionality.
-* Develop user profile management.
-* Expand dashboard features.
-* Implement content management (CRUD for `objects` table).
-* Refine error handling and user feedback.
-* Write unit/integration tests.
-
----
-
-## Version X.Y.Z (Future Version)
-
-**Date:**
+Version 0.20.0 - Granular Role Permissions for Room CRUD (2025-06-02)
+Date: 2025-06-02
+... (rest of the tracker remains the same) ...

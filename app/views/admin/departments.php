@@ -1,19 +1,19 @@
 <?php
-// This view is used by AdminController::users()
+// This view is used by AdminController::departments()
 // Expected variables:
 // - $pageTitle (string)
 // - $breadcrumbs (array)
-// User data is now loaded via AJAX by DataTables
+// Department data is now loaded via AJAX by DataTables
 
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
-<div class="admin-users-container">
+<div class="admin-departments-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Users'); ?></h1>
-        <?php if (userHasCapability('MANAGE_USERS')): // Ensure add button also checks capability ?>
-        <a href="<?php echo BASE_URL . 'admin/addUser'; ?>" class="btn btn-success">
-            <i class="fas fa-plus"></i> Add New User
+        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Departments'); ?></h1>
+        <?php if (userHasCapability('MANAGE_DEPARTMENTS')): // Ensure add button also checks capability ?>
+        <a href="<?php echo BASE_URL . 'admin/addDepartment'; ?>" class="btn btn-success">
+            <i class="fas fa-plus"></i> Add New Department
         </a>
         <?php endif; ?>
     </div>
@@ -40,16 +40,13 @@ require_once __DIR__ . '/../layouts/header.php';
     ?>
 
     <div class="table-responsive">
-        <table class="table table-striped table-hover" id="usersTable"> <thead class="table-dark">
+        <table class="table table-striped table-hover" id="departmentsTable"> <thead class="table-dark">
                 <tr>
                     <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Display Name</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Registered</th>
-                    <th>Status</th>
+                    <th>Department Name</th>
+                    <th>Description</th>
+                    <th>Users</th>
+                    <th>Created At</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -65,30 +62,27 @@ require_once __DIR__ . '/../layouts/footer.php';
 
 <script>
 $(document).ready(function() {
-    $('#usersTable').DataTable({
+    $('#departmentsTable').DataTable({
         "processing": true, 
         "serverSide": false, // Client-side processing for now
         "ajax": {
-            "url": "<?php echo BASE_URL . 'admin/ajaxGetUsers'; ?>",
+            "url": "<?php echo BASE_URL . 'admin/ajaxGetDepartments'; ?>",
             "type": "GET",
             "dataSrc": "data" 
         },
         "columns": [
             { "data": "id" },
-            { "data": "username" },
-            { "data": "email" },
-            { "data": "display_name" },
-            { "data": "role" },
-            { "data": "department" },
-            { "data": "registered" },
-            { "data": "status" },
+            { "data": "name" },
+            { "data": "description" },
+            { "data": "user_count" },
+            { "data": "created_at" },
             { 
                 "data": "actions",
                 "orderable": false,
                 "searchable": false
             }
         ],
-        "order": [[ 0, "desc" ]] // Default sort by ID descending
+        "order": [[ 1, "asc" ]] // Default sort by Department Name ascending
     });
 });
 </script>

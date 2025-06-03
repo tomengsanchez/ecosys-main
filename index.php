@@ -103,12 +103,3 @@ if (file_exists($controllerFile)) {
 }
 
 ?>
-```
-Key changes in `mainsystem/index.php`:
-* **Improved Routing Logic**:
-    * If the URL is empty (e.g., `/mainsystem/`), it now correctly routes to `DashboardController`'s `index` action if the user is logged in, or `AuthController`'s `login` action if not.
-    * If the URL specifies a controller but no action (e.g., `/mainsystem/dashboard`), the `$actionName` now correctly defaults to `index` for that controller.
-    * If both controller and action are specified (e.g., `/mainsystem/auth/processlogin`), those are used.
-* The logic for handling missing controller files or classes has been slightly adjusted to be more consistent with the new routing.
-
-With these changes, navigating to `/mainsystem/dashboard` (when logged in) should correctly load the `DashboardController` and execute its `index` method, displaying your dashboa

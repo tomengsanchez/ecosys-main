@@ -1,19 +1,19 @@
 <?php
-// This view is used by AdminController::users()
+// This view is used by AdminController::listRoles()
 // Expected variables:
 // - $pageTitle (string)
 // - $breadcrumbs (array)
-// User data is now loaded via AJAX by DataTables
+// Role data is now loaded via AJAX by DataTables
 
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
-<div class="admin-users-container">
+<div class="admin-roles-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Users'); ?></h1>
-        <?php if (userHasCapability('MANAGE_USERS')): // Ensure add button also checks capability ?>
-        <a href="<?php echo BASE_URL . 'admin/addUser'; ?>" class="btn btn-success">
-            <i class="fas fa-plus"></i> Add New User
+        <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Roles'); ?></h1>
+        <?php if (userHasCapability('MANAGE_ROLES')): // Ensure add button also checks capability ?>
+        <a href="<?php echo BASE_URL . 'admin/addRole'; ?>" class="btn btn-success">
+            <i class="fas fa-plus"></i> Add New Role
         </a>
         <?php endif; ?>
     </div>
@@ -40,16 +40,14 @@ require_once __DIR__ . '/../layouts/header.php';
     ?>
 
     <div class="table-responsive">
-        <table class="table table-striped table-hover" id="usersTable"> <thead class="table-dark">
+        <table class="table table-striped table-hover" id="rolesTable"> <thead class="table-dark">
                 <tr>
                     <th>ID</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Display Name</th>
-                    <th>Role</th>
-                    <th>Department</th>
-                    <th>Registered</th>
-                    <th>Status</th>
+                    <th>Role Key</th>
+                    <th>Role Name</th>
+                    <th>Description</th>
+                    <th>System Role?</th>
+                    <th>Created At</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -65,30 +63,28 @@ require_once __DIR__ . '/../layouts/footer.php';
 
 <script>
 $(document).ready(function() {
-    $('#usersTable').DataTable({
+    $('#rolesTable').DataTable({
         "processing": true, 
         "serverSide": false, // Client-side processing for now
         "ajax": {
-            "url": "<?php echo BASE_URL . 'admin/ajaxGetUsers'; ?>",
+            "url": "<?php echo BASE_URL . 'admin/ajaxGetRoles'; ?>",
             "type": "GET",
             "dataSrc": "data" 
         },
         "columns": [
             { "data": "id" },
-            { "data": "username" },
-            { "data": "email" },
-            { "data": "display_name" },
-            { "data": "role" },
-            { "data": "department" },
-            { "data": "registered" },
-            { "data": "status" },
+            { "data": "key" }, // Matches the 'key' field from ajaxGetRoles
+            { "data": "name" },
+            { "data": "description" },
+            { "data": "is_system" }, // Matches the 'is_system' field
+            { "data": "created_at" },
             { 
                 "data": "actions",
                 "orderable": false,
                 "searchable": false
             }
         ],
-        "order": [[ 0, "desc" ]] // Default sort by ID descending
+        "order": [[ 2, "asc" ]] // Default sort by Role Name ascending
     });
 });
 </script>
