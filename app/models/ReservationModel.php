@@ -31,8 +31,7 @@ class ReservationModel extends BaseObjectModel {
      */
     public function getConflictingReservations($roomId, $startTime, $endTime, $statuses = ['approved'], $excludeReservationId = null) {
         try {
-            // Construct the IN clause for statuses
-            if (empty($statuses)) { // Should not happen if called correctly, but good to check
+            if (empty($statuses)) { 
                 return [];
             }
             $statusPlaceholders = implode(',', array_fill(0, count($statuses), '?'));
@@ -53,8 +52,8 @@ class ReservationModel extends BaseObjectModel {
             foreach ($statuses as $status) {
                 $params[] = $status;
             }
-            $params[] = $endTime;   // For oms.meta_value < :endTime
-            $params[] = $startTime; // For ome.meta_value > :startTime
+            $params[] = $endTime;   
+            $params[] = $startTime; 
 
             if ($excludeReservationId !== null && is_numeric($excludeReservationId)) {
                 $sql .= " AND o.object_id != ? ";
@@ -63,22 +62,44 @@ class ReservationModel extends BaseObjectModel {
             
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
-            $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Optionally, fetch full meta for each conflict if needed, but for conflict detection, this is usually enough.
-            // if ($conflicts) {
-            //     foreach ($conflicts as &$conflict) {
-            //         $conflict['meta'] = $this->getAllObjectMeta($conflict['object_id']);
-            //     }
-            //     unset($conflict);
-            // }
-            return $conflicts;
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         } catch (PDOException $e) {
             error_log("Error in ReservationModel::getConflictingReservations(): " . $e->getMessage());
             return false;
         }
     }
+
+    /**
+     * Counts pending reservations for a specific room that start at an exact datetime.
+     *
+     * @param int $roomId The ID of the room.
+     * @param string $exactStartDateTime The exact start datetime (YYYY-MM-DD HH:MM:SS).
+     * @return int|false The count of pending reservations, or false on error. Returns 0 if none found.
+     */
+    public function countPendingRequestsStartingAt($roomId, $exactStartDateTime) {
+        try {
+            $sql = "SELECT COUNT(o.object_id) as count
+                    FROM objects o
+                    JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
+                    WHERE o.object_type = 'reservation'
+                      AND o.object_parent = :roomId
+                      AND o.object_status = 'pending'
+                      AND oms.meta_value = :exactStartDateTime";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':roomId' => $roomId,
+                ':exactStartDateTime' => $exactStartDateTime
+            ]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $result ? (int)$result['count'] : 0;
+        } catch (PDOException $e) {
+            error_log("Error in ReservationModel::countPendingRequestsStartingAt(): " . $e->getMessage());
+            return false; // Indicate an error occurred
+        }
+    }
+
 
     /**
      * Get all reservations, optionally filtered by conditions.
@@ -117,7 +138,4 @@ class ReservationModel extends BaseObjectModel {
         return $this->getAllReservations($conditions, $args);
     }
     
-    // You can add more reservation-specific methods here, e.g.:
-    // - createReservation(array $data) // Could call parent::createObject with specific defaults or validation
-    // - updateReservationStatus($reservationId, $newStatus)
 }

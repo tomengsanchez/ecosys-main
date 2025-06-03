@@ -8,29 +8,28 @@
 // - $reservation_date (string) - Submitted date (for repopulating form)
 // - $reservation_time_slot (string) - Submitted time slot
 // - $reservation_purpose (string) - Submitted purpose
-// - $approved_reservations_json (string) - JSON string of approved reservation start/end times for this room
+// - $approved_reservations_data_for_js (array) - Raw PHP array of approved reservation start/end times
 
-// Determine the form action URL
-$formAction = BASE_URL . 'openoffice/createreservation/' . ($room['object_id'] ?? '');
+$formAction = BASE_URL . 'Openoffice/createreservation/' . ($room['object_id'] ?? '');
 
-// Define available time slots (1-hour intervals from 8 AM to 5 PM)
-// This array defines the base structure of the slots. JS will enable/disable them.
 $baseTimeSlots = [];
-for ($hour = 8; $hour < 17; $hour++) { // 8 AM to 4 PM start times, for slots ending by 5 PM
+for ($hour = 8; $hour < 17; $hour++) { 
     $startTime = sprintf("%02d:00", $hour);
     $endTimeHour = $hour + 1;
     $endTime = sprintf("%02d:00", $endTimeHour);
-    
     $displayStartTime = date("g:i A", strtotime($startTime));
-    $displayEndTime = date("g:i A", strtotime($endTimeHour . ":00")); // Use $endTimeHour for correct AM/PM
+    $displayEndTime = date("g:i A", strtotime($endTimeHour . ":00"));
     $displaySlot = $displayStartTime . ' - ' . $displayEndTime;
-
     $valueSlot = $startTime . '-' . $endTime;
     $baseTimeSlots[$valueSlot] = $displaySlot;
 }
 
-// Include header
 require_once __DIR__ . '/../layouts/header.php';
+
+$jsRoomId = $room['object_id'] ?? 0;
+echo "<script>const PHP_ROOM_ID = " . intval($jsRoomId) . ";</script>";
+echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>"; 
+
 ?>
 
 <div class="row justify-content-center">
@@ -54,12 +53,19 @@ require_once __DIR__ . '/../layouts/header.php';
                 if (!empty($errors['form_err'])) {
                     echo '<div class="alert alert-danger text-center">' . htmlspecialchars($errors['form_err']) . '</div>';
                 }
+                // Session messages display
                 if (isset($_SESSION['message'])) {
-                    echo '<div class="alert alert-success">' . htmlspecialchars($_SESSION['message']) . '</div>';
+                    echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
+                         htmlspecialchars($_SESSION['message']) . 
+                         '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
+                         '</div>';
                     unset($_SESSION['message']);
                 }
                 if (isset($_SESSION['error_message'])) {
-                    echo '<div class="alert alert-danger">' . htmlspecialchars($_SESSION['error_message']) . '</div>';
+                    echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">' . 
+                         htmlspecialchars($_SESSION['error_message']) . 
+                         '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
+                         '</div>';
                     unset($_SESSION['error_message']);
                 }
                 ?>
@@ -83,7 +89,6 @@ require_once __DIR__ . '/../layouts/header.php';
                                 class="form-select <?php echo (!empty($errors['time_slot_err'])) ? 'is-invalid' : ''; ?>" required>
                             <option value="">-- Select a Time Slot --</option>
                             <?php 
-                            // PHP loop to create the base options. JavaScript will manage their state.
                             foreach ($baseTimeSlots as $value => $display): ?>
                                 <option value="<?php echo htmlspecialchars($value); ?>" <?php echo (isset($reservation_time_slot) && $reservation_time_slot == $value) ? 'selected' : ''; ?>>
                                     <?php echo htmlspecialchars($display); ?>
@@ -93,6 +98,7 @@ require_once __DIR__ . '/../layouts/header.php';
                         <?php if (!empty($errors['time_slot_err'])): ?>
                             <div class="invalid-feedback"><?php echo htmlspecialchars($errors['time_slot_err']); ?></div>
                         <?php endif; ?>
+                        <p id="queueInfo" class="text-info small mt-2 mb-0"></p> 
                     </div>
 
                     <div class="mb-3">
@@ -106,13 +112,13 @@ require_once __DIR__ . '/../layouts/header.php';
                     </div>
                     
                     <p class="text-muted small">
-                        Your reservation request will be submitted for approval. You can view the status of your requests under "My Reservations".
-                        Reservations are for 1-hour slots. Available slots are updated based on the selected date.
+                        Your reservation request will be submitted for approval.
+                        Reservations are for 1-hour slots.
                     </p>
 
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">Submit Reservation Request</button>
-                        <a href="<?php echo BASE_URL . 'openoffice/rooms'; ?>" class="btn btn-secondary">Cancel</a>
+                        <a href="<?php echo BASE_URL . 'Openoffice/rooms'; ?>" class="btn btn-secondary">Cancel</a>
                     </div>
                 </form>
             </div>
@@ -124,86 +130,129 @@ require_once __DIR__ . '/../layouts/header.php';
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('reservation_date');
     const timeSlotSelect = document.getElementById('reservation_time_slot');
+    const queueInfoEl = document.getElementById('queueInfo');
+    const roomId = typeof PHP_ROOM_ID !== 'undefined' ? PHP_ROOM_ID : 0;
+    const ajaxBaseUrl = typeof BASE_AJAX_URL !== 'undefined' ? BASE_AJAX_URL : '/';
+
+    // Directly assign the PHP array, encoded by PHP, to the JavaScript variable.
+    // JSON_HEX_* options are used for security to prevent breaking out of JS context.
+    const approvedReservations = <?php 
+        echo json_encode(
+            $approved_reservations_data_for_js ?? [], 
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE
+        ); 
+    ?>;
     
-    // Parse the approved reservations data passed from PHP
-    // Ensure this variable name matches what's passed from the controller
-    const approvedReservations = JSON.parse(<?php echo $approved_reservations_json ?? '[]'; ?>);
-    
-    // Store the original options from the select dropdown
+    console.log('[DEBUG] Approved Reservations:', approvedReservations); // For debugging
+
     const baseTimeSlotOptions = Array.from(timeSlotSelect.options).map(opt => ({
         value: opt.value,
         text: opt.text,
-        originalText: opt.text // Keep original text for resetting
+        originalText: opt.text
     }));
 
     function isSlotBooked(slotStartTime, slotEndTime, approvedBookings) {
         for (const booking of approvedBookings) {
             const bookingStart = new Date(booking.start);
             const bookingEnd = new Date(booking.end);
-
-            // Check for overlap:
-            // (SlotStart < BookingEnd) and (SlotEnd > BookingStart)
             if (slotStartTime < bookingEnd && slotEndTime > bookingStart) {
-                return true; // Conflict found
+                return true; 
             }
         }
-        return false; // No conflict
+        return false; 
+    }
+
+    async function fetchQueueInfo(selectedDate, timeSlotValue) {
+        queueInfoEl.textContent = 'Checking availability...';
+        if (!roomId || !selectedDate || !timeSlotValue) {
+            queueInfoEl.textContent = ''; 
+            return;
+        }
+        
+        const url = `${ajaxBaseUrl}Openoffice/getSlotQueueInfo?roomId=${roomId}&date=${selectedDate}&slot=${timeSlotValue}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                // Try to get more detailed error from response if possible
+                let errorText = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json(); // if server sends JSON error
+                    if (errorData && errorData.error) {
+                        errorText = errorData.error;
+                    }
+                } catch (e) { /* ignore if response is not JSON */ }
+                throw new Error(errorText);
+            }
+            const data = await response.json();
+
+            if (data.error) {
+                queueInfoEl.textContent = `Note: ${data.error}`;
+                queueInfoEl.className = 'text-danger small mt-2 mb-0';
+            } else {
+                const count = data.pendingCount;
+                if (count > 0) {
+                    queueInfoEl.textContent = `There are ${count} other pending request(s) for this slot. You would be #${count + 1} in the queue.`;
+                } else {
+                    queueInfoEl.textContent = 'This slot currently has no other pending requests.';
+                }
+                queueInfoEl.className = 'text-info small mt-2 mb-0';
+            }
+        } catch (error) {
+            console.error('Error fetching queue info:', error);
+            queueInfoEl.textContent = 'Could not retrieve queue information: ' + error.message;
+            queueInfoEl.className = 'text-warning small mt-2 mb-0';
+        }
     }
 
     function updateAvailableTimeSlots() {
+        queueInfoEl.textContent = ''; 
         if (!dateInput.value) {
-            // If no date is selected, reset to default and disable all but the placeholder
-            timeSlotSelect.innerHTML = ''; // Clear existing options
-            baseTimeSlotOptions.forEach((optData, index) => {
+            timeSlotSelect.innerHTML = ''; 
+            baseTimeSlotOptions.forEach((optData) => {
                 const option = new Option(optData.text, optData.value);
-                if (optData.value === "") { // Placeholder
-                    option.selected = true;
-                } else {
-                    option.disabled = true;
-                }
+                if (optData.value === "") { option.selected = true; } 
+                else { option.disabled = true; }
                 timeSlotSelect.add(option);
             });
             return;
         }
 
-        const selectedDateStr = dateInput.value; // YYYY-MM-DD
-        const now = new Date(); // Current date and time for comparison
+        const selectedDateStr = dateInput.value; 
+        const now = new Date(); 
+        now.setHours(0,0,0,0); 
 
-        // Filter approved reservations for the selected date only
         const todaysApprovedBookings = approvedReservations.filter(booking => {
-            const bookingStartDate = booking.start.substring(0, 10); // Extract YYYY-MM-DD part
-            return bookingStartDate === selectedDateStr;
+            return booking.start.substring(0, 10) === selectedDateStr;
         });
 
-        timeSlotSelect.innerHTML = ''; // Clear existing options before repopulating
+        timeSlotSelect.innerHTML = ''; 
+        let firstAvailableSlotValue = null;
 
-        baseTimeSlotOptions.forEach((optData, index) => {
-            const option = new Option(optData.originalText, optData.value); // Use originalText for display
-            
-            if (optData.value === "") { // Placeholder option
+        baseTimeSlotOptions.forEach((optData) => {
+            const option = new Option(optData.originalText, optData.value); 
+            if (optData.value === "") { 
                 option.selected = (timeSlotSelect.value === "" || !timeSlotSelect.value);
                 timeSlotSelect.add(option);
-                return; // Continue to next iteration
+                return; 
             }
 
-            const timeParts = optData.value.split('-'); // e.g., "08:00-09:00"
-            const slotStartHourMin = timeParts[0]; // "08:00"
-            const slotEndHourMin = timeParts[1];   // "09:00"
+            const timeParts = optData.value.split('-'); 
+            const slotStartHourMin = timeParts[0]; 
+            const slotEndHourMin = timeParts[1];   
 
             const slotFullStartTime = new Date(`${selectedDateStr}T${slotStartHourMin}:00`);
             const slotFullEndTime = new Date(`${selectedDateStr}T${slotEndHourMin}:00`);
             
             let isBooked = false;
             let isPast = false;
+            const currentTimeForSlotCheck = new Date(); 
 
-            // Check if the slot is in the past
-            // Compare end of slot with current time to allow booking slots that start now but haven't ended
-            if (slotFullEndTime <= now) { 
+            if (slotFullEndTime <= currentTimeForSlotCheck) { 
                 isPast = true;
             }
             
-            // Check if the slot is booked
-            if (!isPast) { // Only check for booking if not already past
+            if (!isPast) {
                  isBooked = isSlotBooked(slotFullStartTime, slotFullEndTime, todaysApprovedBookings);
             }
 
@@ -215,33 +264,47 @@ document.addEventListener('DOMContentLoaded', function() {
                 option.text = `${optData.originalText} (Past)`;
             } else {
                 option.disabled = false;
+                if (firstAvailableSlotValue === null) { 
+                    firstAvailableSlotValue = optData.value;
+                }
             }
             
-            // Preserve selection if it was previously selected and still valid
             if (timeSlotSelect.dataset.selectedValue === optData.value && !option.disabled) {
                 option.selected = true;
             }
-
             timeSlotSelect.add(option);
         });
-        // After repopulating, if no option is selected (e.g. previous selection became invalid), select placeholder
-        if(timeSlotSelect.selectedIndex === -1 || timeSlotSelect.options[timeSlotSelect.selectedIndex].disabled){
-            timeSlotSelect.value = "";
+        
+        if(timeSlotSelect.selectedIndex === -1 || timeSlotSelect.options[timeSlotSelect.selectedIndex].disabled || timeSlotSelect.value === ""){
+            if (firstAvailableSlotValue) {
+                timeSlotSelect.value = firstAvailableSlotValue;
+            } else {
+                 timeSlotSelect.value = ""; 
+            }
+        }
+        
+        if (timeSlotSelect.value !== "" && !timeSlotSelect.options[timeSlotSelect.selectedIndex].disabled) {
+            fetchQueueInfo(selectedDateStr, timeSlotSelect.value);
         }
     }
 
     if (dateInput) {
         dateInput.addEventListener('change', function() {
-            timeSlotSelect.dataset.selectedValue = timeSlotSelect.value; // Store current selection before update
+            timeSlotSelect.dataset.selectedValue = timeSlotSelect.value; 
             updateAvailableTimeSlots();
         });
-        // Initial call to populate time slots based on the default date
+        timeSlotSelect.addEventListener('change', function() {
+            if (this.value !== "" && !this.options[this.selectedIndex].disabled && dateInput.value) {
+                fetchQueueInfo(dateInput.value, this.value);
+            } else {
+                queueInfoEl.textContent = ''; 
+            }
+        });
         updateAvailableTimeSlots(); 
     }
 });
 </script>
 
 <?php
-// Include footer
 require_once __DIR__ . '/../layouts/footer.php';
 ?>
