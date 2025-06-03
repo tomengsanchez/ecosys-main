@@ -21,7 +21,7 @@ if (!$pdo) {
 echo "<pre>"; // For better browser output formatting
 
 // --- Configuration for Seeding ---
-$numberOfReservationsToCreate = 100;
+$numberOfReservationsToCreate = 100000;
 $sampleUserId = 1; // Assuming user_id 1 (admin) exists
 $sampleRoomId = 1; // Assuming room object_id 1 (e.g., 'Conference Room Alpha') exists
 $sampleRoomName = "Conference Room Alpha"; // For generating titles

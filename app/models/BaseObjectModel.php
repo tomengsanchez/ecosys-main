@@ -79,7 +79,7 @@ class BaseObjectModel {
      */
     public function getObjectById($objectId) {
         try {
-            $sql = "SELECT * FROM objects WHERE object_id = :object_id LIMIT 1";
+            $sql = "SELECT o.* FROM objects o WHERE o.object_id = :object_id LIMIT 1"; // Added alias 'o'
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([':object_id' => $objectId]);
             $object = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -103,36 +103,8 @@ class BaseObjectModel {
      */
     public function getObjectsByType($objectType, array $args = []) {
         try {
-            $sql = "SELECT * FROM objects WHERE object_type = :object_type";
-            $params = [':object_type' => $objectType];
-
-            $orderBy = $args['orderby'] ?? 'object_date';
-            $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
-            if (!in_array($orderBy, ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified'])) {
-                $orderBy = 'object_date';
-            }
-            if (!in_array($orderDir, ['ASC', 'DESC'])) {
-                $orderDir = 'DESC';
-            }
-            $sql .= " ORDER BY {$orderBy} {$orderDir}";
-
-            if (isset($args['limit']) && is_numeric($args['limit'])) {
-                $sql .= " LIMIT " . (int)$args['limit'];
-                if (isset($args['offset']) && is_numeric($args['offset'])) {
-                    $sql .= " OFFSET " . (int)$args['offset'];
-                }
-            }
-
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $objects = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if ($objects && ($args['include_meta'] ?? true)) {
-                foreach ($objects as $key => $object) {
-                    $objects[$key]['meta'] = $this->getAllObjectMeta($object['object_id']);
-                }
-            }
-            return $objects;
+            // Use the more generic getObjectsByConditions method
+            return $this->getObjectsByConditions($objectType, [], $args);
         } catch (PDOException $e) {
             error_log("Error in BaseObjectModel::getObjectsByType({$objectType}): " . $e->getMessage());
             return false;
@@ -140,46 +112,66 @@ class BaseObjectModel {
     }
     
     /**
-     * Get objects by various conditions.
+     * Get objects by various conditions, including an optional search term.
      *
      * @param string $objectType The type of objects to retrieve.
      * @param array $conditions Associative array of field => value conditions. Supports array values for IN clauses.
+     * Field names in conditions should be prefixed with table alias 'o.' if they are from 'objects' table.
      * @param array $args Optional arguments (limit, offset, orderby, orderdir, include_meta).
+     * Orderby field should be prefixed with table alias 'o.' if from 'objects' table.
+     * @param string $searchTerm Optional search term to filter by (searches object_title, object_content, object_id).
      * @return array|false An array of object arrays, or false on failure.
      */
-    public function getObjectsByConditions($objectType, array $conditions = [], array $args = []) {
+    public function getObjectsByConditions($objectType, array $conditions = [], array $args = [], $searchTerm = '') {
         try {
-            $sql = "SELECT * FROM objects WHERE object_type = :object_type";
+            $sql = "SELECT o.* FROM objects o WHERE o.object_type = :object_type"; // Added alias 'o'
             $params = [':object_type' => $objectType];
             $whereClauses = [];
 
             foreach ($conditions as $field => $value) {
-                // Ensure field is a valid column name to prevent SQL injection if $field comes from less trusted source
-                // For now, assuming $field is safe (e.g., 'object_status', 'object_author')
+                // Field name should already include alias if needed, e.g., 'o.object_status'
                 if (is_array($value)) { 
                     $placeholders = [];
                     foreach ($value as $idx => $val) {
-                        $paramName = ":{$field}_{$idx}"; // Ensure unique param names
+                        $paramName = ":" . str_replace('.', '_', $field) . "_{$idx}"; // Ensure unique param names, replace dot with underscore
                         $placeholders[] = $paramName;
                         $params[$paramName] = $val;
                     }
                     $whereClauses[] = "{$field} IN (" . implode(',', $placeholders) . ")";
                 } else { 
-                    $paramName = ":{$field}";
+                    $paramName = ":" . str_replace('.', '_', $field); // Replace dot with underscore for param name
                     $whereClauses[] = "{$field} = {$paramName}";
                     $params[$paramName] = $value;
                 }
             }
 
+            // Add search term condition
+            if (!empty($searchTerm)) {
+                $searchParam = ":searchTerm";
+                $searchClauses = [];
+                $searchClauses[] = "o.object_title LIKE " . $searchParam;
+                $searchClauses[] = "o.object_content LIKE " . $searchParam;
+                if (is_numeric($searchTerm)) { // Also search by ID if term is numeric
+                    $searchClauses[] = "o.object_id = :searchIdNumeric";
+                    $params[':searchIdNumeric'] = (int)$searchTerm;
+                }
+                $whereClauses[] = "(" . implode(" OR ", $searchClauses) . ")";
+                $params[$searchParam] = "%" . $searchTerm . "%";
+            }
+
+
             if (!empty($whereClauses)) {
                 $sql .= " AND " . implode(" AND ", $whereClauses);
             }
 
-            $orderBy = $args['orderby'] ?? 'object_date';
+            // Order by - ensure field includes alias 'o.' if from objects table
+            $orderBy = $args['orderby'] ?? 'o.object_date'; // Default to 'o.object_date'
             $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
-            $allowedOrderBy = ['object_id', 'object_title', 'object_date', 'menu_order', 'object_modified', 'object_status']; 
-            if (!in_array($orderBy, $allowedOrderBy)) {
-                $orderBy = 'object_date';
+            // Basic validation for orderBy to prevent obvious SQL injection, more robust validation might be needed
+            // if $orderBy comes from less trusted sources.
+            $allowedOrderByColumns = ['o.object_id', 'o.object_title', 'o.object_date', 'o.menu_order', 'o.object_modified', 'o.object_status'];
+            if (!in_array(strtolower($orderBy), array_map('strtolower', $allowedOrderByColumns))) {
+                $orderBy = 'o.object_date'; // Default to a safe column
             }
             if (!in_array($orderDir, ['ASC', 'DESC'])) {
                 $orderDir = 'DESC';
@@ -205,10 +197,71 @@ class BaseObjectModel {
             return $objects;
 
         } catch (PDOException $e) {
-            error_log("Error in BaseObjectModel::getObjectsByConditions({$objectType}): " . $e->getMessage());
+            error_log("Error in BaseObjectModel::getObjectsByConditions({$objectType}): " . $e->getMessage() . " SQL: " . $sql . " Params: " . print_r($params, true));
             return false;
         }
     }
+
+    /**
+     * Count objects by various conditions, including an optional search term.
+     *
+     * @param string $objectType The type of objects to count.
+     * @param array $conditions Associative array of field => value conditions.
+     * Field names in conditions should be prefixed with table alias 'o.' if they are from 'objects' table.
+     * @param string $searchTerm Optional search term to filter by.
+     * @return int|false The total count of matching objects, or false on failure.
+     */
+    public function countObjectsByConditions($objectType, array $conditions = [], $searchTerm = '') {
+        try {
+            $sql = "SELECT COUNT(o.object_id) FROM objects o WHERE o.object_type = :object_type"; // Added alias 'o'
+            $params = [':object_type' => $objectType];
+            $whereClauses = [];
+
+            foreach ($conditions as $field => $value) {
+                 // Field name should already include alias if needed, e.g., 'o.object_status'
+                if (is_array($value)) {
+                    $placeholders = [];
+                    foreach ($value as $idx => $val) {
+                        $paramName = ":" . str_replace('.', '_', $field) . "_{$idx}";
+                        $placeholders[] = $paramName;
+                        $params[$paramName] = $val;
+                    }
+                    $whereClauses[] = "{$field} IN (" . implode(',', $placeholders) . ")";
+                } else {
+                    $paramName = ":" . str_replace('.', '_', $field);
+                    $whereClauses[] = "{$field} = {$paramName}";
+                    $params[$paramName] = $value;
+                }
+            }
+            
+            // Add search term condition
+            if (!empty($searchTerm)) {
+                $searchParam = ":searchTerm";
+                $searchClauses = [];
+                $searchClauses[] = "o.object_title LIKE " . $searchParam;
+                $searchClauses[] = "o.object_content LIKE " . $searchParam;
+                 if (is_numeric($searchTerm)) { // Also search by ID if term is numeric
+                    $searchClauses[] = "o.object_id = :searchIdNumeric";
+                    $params[':searchIdNumeric'] = (int)$searchTerm;
+                }
+                $whereClauses[] = "(" . implode(" OR ", $searchClauses) . ")";
+                $params[$searchParam] = "%" . $searchTerm . "%";
+            }
+
+            if (!empty($whereClauses)) {
+                $sql .= " AND " . implode(" AND ", $whereClauses);
+            }
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            return (int)$stmt->fetchColumn();
+
+        } catch (PDOException $e) {
+            error_log("Error in BaseObjectModel::countObjectsByConditions({$objectType}): " . $e->getMessage() . " SQL: " . $sql . " Params: " . print_r($params, true));
+            return false;
+        }
+    }
+
 
     /**
      * Update an existing object's details and its metadata.
