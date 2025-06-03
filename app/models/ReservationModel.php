@@ -31,7 +31,6 @@ class ReservationModel extends BaseObjectModel {
      */
     public function getConflictingReservations($roomId, $startTime, $endTime, $statuses = ['approved'], $excludeReservationId = null) {
         try {
-            // Construct the IN clause for statuses
             if (empty($statuses)) { 
                 return [];
             }
@@ -53,8 +52,8 @@ class ReservationModel extends BaseObjectModel {
             foreach ($statuses as $status) {
                 $params[] = $status;
             }
-            $params[] = $endTime;   // For oms.meta_value < :endTime
-            $params[] = $startTime; // For ome.meta_value > :startTime
+            $params[] = $endTime;   
+            $params[] = $startTime; 
 
             if ($excludeReservationId !== null && is_numeric($excludeReservationId)) {
                 $sql .= " AND o.object_id != ? ";
@@ -63,15 +62,44 @@ class ReservationModel extends BaseObjectModel {
             
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
-            $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            return $conflicts;
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         } catch (PDOException $e) {
             error_log("Error in ReservationModel::getConflictingReservations(): " . $e->getMessage());
             return false;
         }
     }
+
+    /**
+     * Counts pending reservations for a specific room that start at an exact datetime.
+     *
+     * @param int $roomId The ID of the room.
+     * @param string $exactStartDateTime The exact start datetime (YYYY-MM-DD HH:MM:SS).
+     * @return int|false The count of pending reservations, or false on error. Returns 0 if none found.
+     */
+    public function countPendingRequestsStartingAt($roomId, $exactStartDateTime) {
+        try {
+            $sql = "SELECT COUNT(o.object_id) as count
+                    FROM objects o
+                    JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
+                    WHERE o.object_type = 'reservation'
+                      AND o.object_parent = :roomId
+                      AND o.object_status = 'pending'
+                      AND oms.meta_value = :exactStartDateTime";
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([
+                ':roomId' => $roomId,
+                ':exactStartDateTime' => $exactStartDateTime
+            ]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $result ? (int)$result['count'] : 0;
+        } catch (PDOException $e) {
+            error_log("Error in ReservationModel::countPendingRequestsStartingAt(): " . $e->getMessage());
+            return false; // Indicate an error occurred
+        }
+    }
+
 
     /**
      * Get all reservations, optionally filtered by conditions.
@@ -82,7 +110,6 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false An array of reservation objects or false on failure.
      */
     public function getAllReservations(array $conditions = [], array $args = []) {
-        // Ensure the object_type is always 'reservation' for this model's specific methods
         return $this->getObjectsByConditions('reservation', $conditions, $args);
     }
 
@@ -94,7 +121,7 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false
      */
     public function getReservationsByUserId($userId, array $args = []) {
-        $conditions = ['o.object_author' => $userId]; // Assuming 'o.' alias is used in BaseObjectModel
+        $conditions = ['object_author' => $userId];
         return $this->getAllReservations($conditions, $args);
     }
 
@@ -107,94 +134,8 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false
      */
     public function getReservationsByRoomId($roomId, array $conditions = [], array $args = []) {
-        $conditions['o.object_parent'] = $roomId; // Assuming 'o.' alias
+        $conditions['object_parent'] = $roomId;
         return $this->getAllReservations($conditions, $args);
     }
     
-    /**
-     * Get reservations within a specific date range and with given statuses.
-     *
-     * @param string $rangeStartDateTime Start of the date range (YYYY-MM-DD HH:MM:SS).
-     * @param string $rangeEndDateTime End of the date range (YYYY-MM-DD HH:MM:SS).
-     * @param array $statuses Array of reservation statuses to include (e.g., ['pending', 'approved']).
-     * @param array $args Optional arguments for ordering, limit, etc. (passed to getObjectsByConditions).
-     * @return array|false An array of reservation objects or false on failure.
-     */
-    public function getReservationsInDateRange($rangeStartDateTime, $rangeEndDateTime, array $statuses = ['pending', 'approved'], array $args = []) {
-        try {
-            // Base conditions
-            $conditions = [];
-            if (!empty($statuses)) {
-                $conditions['o.object_status'] = $statuses;
-            }
-
-            // We need to build a more complex query here because the date range
-            // applies to meta values, not direct columns in the 'objects' table.
-            // So, we'll construct the SQL directly for this specific need.
-
-            $sql = "SELECT o.* FROM objects o
-                    INNER JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
-                    INNER JOIN objectmeta ome ON o.object_id = ome.object_id AND ome.meta_key = 'reservation_end_datetime'
-                    WHERE o.object_type = :object_type";
-            
-            $params = [':object_type' => 'reservation'];
-
-            // Add status conditions
-            if (!empty($statuses)) {
-                $statusPlaceholders = [];
-                foreach ($statuses as $idx => $status) {
-                    $paramName = ":status_{$idx}";
-                    $statusPlaceholders[] = $paramName;
-                    $params[$paramName] = $status;
-                }
-                $sql .= " AND o.object_status IN (" . implode(',', $statusPlaceholders) . ")";
-            }
-
-            // Add date range condition:
-            // An event is within the range if:
-            // (event_start < range_end) AND (event_end > range_start)
-            $sql .= " AND oms.meta_value < :rangeEndDateTime 
-                      AND ome.meta_value > :rangeStartDateTime";
-            $params[':rangeStartDateTime'] = $rangeStartDateTime;
-            $params[':rangeEndDateTime'] = $rangeEndDateTime;
-            
-            // Add ordering from $args if provided
-            $orderBy = $args['orderby'] ?? 'o.object_date';
-            $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
-            $allowedOrderBy = ['o.object_id', 'o.object_title', 'o.object_date', 'o.object_status', 'oms.meta_value']; // oms.meta_value for start time sort
-            if (!in_array(strtolower($orderBy), array_map('strtolower', $allowedOrderBy))) {
-                $orderBy = 'o.object_date';
-            }
-            if (!in_array($orderDir, ['ASC', 'DESC'])) {
-                $orderDir = 'DESC';
-            }
-            $sql .= " ORDER BY {$orderBy} {$orderDir}";
-
-            // Add limit/offset from $args if provided
-            if (isset($args['limit']) && is_numeric($args['limit'])) {
-                $sql .= " LIMIT " . (int)$args['limit'];
-                if (isset($args['offset']) && is_numeric($args['offset'])) {
-                    $sql .= " OFFSET " . (int)$args['offset'];
-                }
-            }
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $objects = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if ($objects && ($args['include_meta'] ?? true)) {
-                foreach ($objects as $key => $object) {
-                    // Fetch all meta for each object if not already included or if needed separately
-                    // Since we joined for start/end time, we might already have them.
-                    // But to be consistent with getObjectsByConditions, we can call getAllObjectMeta.
-                    $objects[$key]['meta'] = $this->getAllObjectMeta($object['object_id']);
-                }
-            }
-            return $objects;
-
-        } catch (PDOException $e) {
-            error_log("Error in ReservationModel::getReservationsInDateRange(): " . $e->getMessage() . " SQL: " . $sql . " Params: " . print_r($params, true));
-            return false;
-        }
-    }
 }
