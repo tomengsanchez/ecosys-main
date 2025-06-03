@@ -65,12 +65,12 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
 
                     <?php 
                     // Determine if Open Office dropdown should be shown
-                    // Users can see "Manage Rooms" if they have MANAGE_ROOMS
-                    // Users can see "Room Reservations" (admin view) if they have MANAGE_OPEN_OFFICE_RESERVATIONS
+                    // Users can see "Manage Rooms" if they have VIEW_ROOMS (or the legacy MANAGE_ROOMS)
+                    // Users can see "Room Reservations" (admin view) if they have VIEW_ALL_ROOM_RESERVATIONS
                     // All logged-in users can see "My Reservations"
-                    $showOpenOfficeDropdown = userHasCapability('MANAGE_ROOMS') || 
-                                              userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS') ||
-                                              isLoggedIn(); // Simplified: if logged in, "My Reservations" is available.
+                    $showOpenOfficeDropdown = userHasCapability('VIEW_ROOMS') || 
+                                              userHasCapability('VIEW_ALL_ROOM_RESERVATIONS') ||
+                                              isLoggedIn(); 
                                               
                     if ($showOpenOfficeDropdown):
                     ?>
@@ -79,11 +79,11 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
                             <i class="fas fa-door-open me-1"></i>Open Office
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="openOfficeDropdown">
-                            <?php if (userHasCapability('MANAGE_ROOMS')): ?>
+                            <?php if (userHasCapability('VIEW_ROOMS')): ?>
                                 <li><a class="dropdown-item <?php echo isActive('openoffice/rooms', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/rooms'; ?>">Manage Rooms</a></li>
                             <?php endif; ?>
                             
-                            <?php if (userHasCapability('MANAGE_OPEN_OFFICE_RESERVATIONS')): ?>
+                            <?php if (userHasCapability('VIEW_ALL_ROOM_RESERVATIONS')): // Corrected capability check ?>
                                 <li><a class="dropdown-item <?php echo isActive('openoffice/roomreservations', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'openoffice/roomreservations'; ?>">Room Reservations (Admin)</a></li>
                             <?php endif; ?>
                             
