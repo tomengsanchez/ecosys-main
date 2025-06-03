@@ -1,4 +1,11 @@
 <?php
+// This view is used by OpenOfficeController::myreservations()
+// Expected variables:
+// - $pageTitle (string)
+// - $breadcrumbs (array)
+// - $reservation_statuses (array) - This might still be useful if any client-side logic needs it,
+//                                   though status rendering is now done server-side for the table.
+
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
@@ -11,8 +18,8 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
-    // ... (session messages as before) ...
-     if (isset($_SESSION['message'])) {
+    // Session messages display
+    if (isset($_SESSION['message'])) {
         echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
              htmlspecialchars($_SESSION['message']) . 
              '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
@@ -28,62 +35,56 @@ require_once __DIR__ . '/../layouts/header.php';
     }
     ?>
 
-    <?php if (!empty($reservations) && is_array($reservations)): ?>
-        <div class="table-responsive">
-            <table class="table table-striped table-hover datatable-l" id="myReservationsTable"> <thead class="table-dark">
-                    <tr>
-                        <th>ID</th>
-                        <th>Room</th>
-                        <th>Purpose</th>
-                        <th>Start Time</th>
-                        <th>End Time</th>
-                        <th>Requested On</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($reservations as $reservation): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($reservation['object_id']); ?></td>
-                            <td><?php echo htmlspecialchars($reservation['room_name'] ?? 'N/A'); ?></td>
-                            <td><?php echo nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')); ?></td>
-                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')); ?></td>
-                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')); ?></td>
-                            <td><?php echo htmlspecialchars(format_datetime_for_display($reservation['object_date'])); ?></td>
-                            <td>
-                                <?php 
-                                $statusKey = $reservation['object_status'] ?? 'unknown';
-                                $statusLabel = $reservation_statuses[$statusKey] ?? ucfirst($statusKey);
-                                $badgeClass = 'bg-secondary'; 
-                                if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
-                                elseif ($statusKey === 'approved') $badgeClass = 'bg-success';
-                                elseif ($statusKey === 'denied') $badgeClass = 'bg-danger';
-                                elseif ($statusKey === 'cancelled') $badgeClass = 'bg-info text-dark';
-                                echo '<span class="badge ' . $badgeClass . '">' . htmlspecialchars($statusLabel) . '</span>';
-                                ?>
-                            </td>
-                            <td>
-                                <?php if ($reservation['object_status'] === 'pending' && userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')): ?>
-                                    <a href="<?php echo BASE_URL . 'OpenOffice/cancelreservation/' . htmlspecialchars($reservation['object_id']); ?>" 
-                                       class="btn btn-sm btn-warning text-dark" title="Cancel Request"
-                                       onclick="return confirm('Are you sure you want to cancel this reservation request?');">
-                                        <i class="fas fa-ban"></i> Cancel
-                                    </a>
-                                <?php else: ?>
-                                    <span class="text-muted small">No actions</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover" id="myReservationsTable"> <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Room</th>
+                    <th>Purpose</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Requested On</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
                 </tbody>
-            </table>
-        </div>
-    <?php else: ?>
-        <div class="alert alert-info">You have not made any room reservations yet. <a href="<?php echo BASE_URL . 'OpenOffice/rooms'; ?>" class="alert-link">Click here to find a room to book.</a></div>
-    <?php endif; ?>
+        </table>
+    </div>
 </div>
 
 <?php
 require_once __DIR__ . '/../layouts/footer.php';
 ?>
+
+<script>
+$(document).ready(function() {
+    $('#myReservationsTable').DataTable({
+        "processing": true, // Optional: show a processing indicator
+        "serverSide": false, // For now, we're doing client-side processing of the full dataset.
+                             // Change to true if implementing full server-side processing (pagination, search, sort)
+        "ajax": {
+            "url": "<?php echo BASE_URL . 'OpenOffice/ajaxGetUserReservations'; ?>",
+            "type": "GET", // Or "POST" if your endpoint expects that
+            "dataSrc": "data" // The key in the JSON response that holds the array of data
+        },
+        "columns": [
+            { "data": "id" },
+            { "data": "room" },
+            { "data": "purpose" },
+            { "data": "start_time" },
+            { "data": "end_time" },
+            { "data": "requested_on" },
+            { "data": "status" },
+            { 
+                "data": "actions",
+                "orderable": false, // Actions column is usually not sortable
+                "searchable": false // Actions column is usually not searchable
+            }
+        ],
+        // Optional: You can add default ordering, language options, etc.
+        "order": [[ 5, "desc" ]] // Default sort by 'Requested On' descending
+    });
+});
+</script>

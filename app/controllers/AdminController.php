@@ -29,8 +29,8 @@ class AdminController {
             redirect('auth/login');
         }
         if (!userHasCapability('ACCESS_ADMIN_PANEL')) { 
-            $_SESSION['error_message'] = "You do not have permission to access this area.";
-            redirect('dashboard'); 
+            $_SESSION['error_message'] = "You do not have permission to access the admin panel.";
+            redirect('Dashboard'); 
         }
     }
 
@@ -54,10 +54,8 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage users.';
             redirect('admin'); 
         }
-        $users = $this->userModel->getAllUsers();
         $data = [
             'pageTitle' => 'Manage Users',
-            'users' => $users,
             'breadcrumbs' => [ 
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Users']
@@ -65,6 +63,57 @@ class AdminController {
         ];
         $this->view('admin/users', $data); 
     }
+
+    public function ajaxGetUsers() {
+        header('Content-Type: application/json');
+        if (!isLoggedIn() || !userHasCapability('MANAGE_USERS')) {
+            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not authorized"]);
+            return;
+        }
+
+        $users = $this->userModel->getAllUsers();
+        $data = [];
+
+        if ($users) {
+            foreach ($users as $user) {
+                $statusHtml = ($user['user_status'] == 0) ? 
+                              '<span class="badge bg-success">Active</span>' : 
+                              '<span class="badge bg-warning text-dark">Inactive/Banned</span>';
+
+                $actionsHtml = '<a href="' . BASE_URL . 'admin/editUser/' . htmlspecialchars($user['user_id']) . '" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>';
+                if ($user['user_id'] != $_SESSION['user_id'] && !($user['user_id'] == 1 && $user['user_role'] === 'admin')) {
+                    $actionsHtml .= ' <a href="' . BASE_URL . 'admin/deleteUser/' . htmlspecialchars($user['user_id']) . '" 
+                                       class="btn btn-sm btn-danger" title="Delete"
+                                       onclick="return confirm(\'Are you sure you want to delete this user? This action cannot be undone.\');">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>';
+                } else {
+                     $actionsHtml .= ' <button class="btn btn-sm btn-danger" title="Cannot delete self or primary admin" disabled><i class="fas fa-trash-alt"></i></button>';
+                }
+
+                $data[] = [
+                    "id" => htmlspecialchars($user['user_id']),
+                    "username" => htmlspecialchars($user['user_login']),
+                    "email" => htmlspecialchars($user['user_email']),
+                    "display_name" => htmlspecialchars($user['display_name']),
+                    "role" => htmlspecialchars(ucfirst($user['user_role'])),
+                    "department" => htmlspecialchars($user['department_name'] ?? 'N/A'),
+                    "registered" => htmlspecialchars(format_datetime_for_display($user['user_registered'])),
+                    "status" => $statusHtml,
+                    "actions" => $actionsHtml
+                ];
+            }
+        }
+
+        $output = [
+            "draw"            => intval($_GET['draw'] ?? 0),
+            "recordsTotal"    => count($data), 
+            "recordsFiltered" => count($data), 
+            "data"            => $data
+        ];
+        echo json_encode($output);
+    }
+
 
     public function addUser() {
         if (!userHasCapability('MANAGE_USERS')) {
@@ -98,7 +147,6 @@ class AdminController {
             ];
             $data = array_merge($commonData, $formData);
 
-
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
             if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
             elseif (!filter_var($data['user_email'], FILTER_VALIDATE_EMAIL)) $data['errors']['user_email_err'] = 'Invalid email format.';
@@ -126,14 +174,9 @@ class AdminController {
 
             if (empty($data['errors'])) {
                 $userId = $this->userModel->createUser(
-                    $data['user_login'],
-                    $data['user_email'],
-                    $data['user_pass'],
-                    $data['display_name'],
-                    $data['user_role'], 
-                    $data['department_id'], 
-                    $data['user_login'], 
-                    $data['user_status']
+                    $data['user_login'], $data['user_email'], $data['user_pass'],
+                    $data['display_name'], $data['user_role'], $data['department_id'], 
+                    $data['user_login'], $data['user_status']
                 );
 
                 if ($userId) {
@@ -143,9 +186,7 @@ class AdminController {
                     $data['errors']['form_err'] = 'Something went wrong. Could not create user.';
                     $this->view('admin/user_form', $data);
                 }
-            } else {
-                $this->view('admin/user_form', $data);
-            }
+            } else { $this->view('admin/user_form', $data); }
         } else {
             $data = array_merge($commonData, [
                 'user_login' => '', 'user_email' => '', 'display_name' => '', 
@@ -161,21 +202,16 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to edit users.';
             redirect('admin/users');
         }
-        
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $user = $this->userModel->findUserById($userId); 
         $departments = $this->departmentModel->getAllDepartments();
-
         if (!$user) {
             $_SESSION['admin_message'] = 'User not found.';
             redirect('admin/users');
         }
-        
         $commonData = [
-            'pageTitle' => 'Edit User',
-            'departments' => $departments,
-            'user' => $user, 
+            'pageTitle' => 'Edit User', 'departments' => $departments, 'user' => $user, 
             'definedRoles' => getDefinedRoles(), 
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
@@ -183,16 +219,12 @@ class AdminController {
                 ['label' => 'Edit User: ' . htmlspecialchars($user['display_name'])]
             ]
         ];
-
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [ 
-                'user_id' => $userId,
-                'user_login' => trim($_POST['user_login'] ?? ''),
-                'user_email' => trim($_POST['user_email'] ?? ''),
-                'display_name' => trim($_POST['display_name'] ?? ''),
-                'user_pass' => trim($_POST['user_pass'] ?? ''), 
-                'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
+                'user_id' => $userId, 'user_login' => trim($_POST['user_login'] ?? ''),
+                'user_email' => trim($_POST['user_email'] ?? ''), 'display_name' => trim($_POST['display_name'] ?? ''),
+                'user_pass' => trim($_POST['user_pass'] ?? ''), 'confirm_pass' => trim($_POST['confirm_pass'] ?? ''),
                 'user_role' => trim($_POST['user_role'] ?? $user['user_role']), 
                 'department_id' => isset($_POST['department_id']) && !empty($_POST['department_id']) ? (int)$_POST['department_id'] : null,
                 'user_status' => isset($_POST['user_status']) ? (int)$_POST['user_status'] : (int)$user['user_status'],
@@ -200,7 +232,6 @@ class AdminController {
             ];
             $data = array_merge($commonData, $formData);
             $data['user'] = array_merge($user, $formData);
-
 
             if (empty($data['user_login'])) $data['errors']['user_login_err'] = 'Username is required.';
             if (empty($data['user_email'])) $data['errors']['user_email_err'] = 'Email is required.';
@@ -210,7 +241,6 @@ class AdminController {
                 if (strlen($data['user_pass']) < 6) $data['errors']['user_pass_err'] = 'Password must be at least 6 characters.';
                 if ($data['user_pass'] !== $data['confirm_pass']) $data['errors']['confirm_pass_err'] = 'Passwords do not match.';
             }
-            
             $allowedRoles = array_keys(getDefinedRoles()); 
             if (!in_array($data['user_role'], $allowedRoles)) $data['errors']['user_role_err'] = 'Invalid user role selected.';
             if ($userId == 1 && $user['user_role'] === 'admin' && $data['user_role'] !== 'admin') {
@@ -220,7 +250,6 @@ class AdminController {
             if ($data['department_id'] !== null && !$this->departmentModel->getDepartmentById($data['department_id'])) {
                 $data['errors']['department_id_err'] = 'Invalid department selected.';
             }
-            
             $existingUserByLogin = $this->userModel->findUserByUsernameOrEmail($data['user_login']);
             if ($existingUserByLogin && $existingUserByLogin['user_id'] != $userId) {
                  $data['errors']['user_login_err'] = 'Username already taken by another user.';
@@ -229,20 +258,13 @@ class AdminController {
             if ($existingUserByEmail && $existingUserByEmail['user_id'] != $userId) {
                  $data['errors']['user_email_err'] = 'Email already registered by another user.';
             }
-
             if (empty($data['errors'])) {
                 $updateData = [
-                    'user_login' => $data['user_login'],
-                    'user_email' => $data['user_email'],
-                    'display_name' => $data['display_name'],
-                    'user_role' => $data['user_role'], 
-                    'department_id' => $data['department_id'], 
-                    'user_status' => $data['user_status']
+                    'user_login' => $data['user_login'], 'user_email' => $data['user_email'],
+                    'display_name' => $data['display_name'], 'user_role' => $data['user_role'], 
+                    'department_id' => $data['department_id'], 'user_status' => $data['user_status']
                 ];
-                if (!empty($data['user_pass'])) {
-                    $updateData['user_pass'] = $data['user_pass']; 
-                }
-
+                if (!empty($data['user_pass'])) { $updateData['user_pass'] = $data['user_pass']; }
                 if ($this->userModel->updateUser($userId, $updateData)) { 
                     $_SESSION['admin_message'] = 'User updated successfully!';
                     redirect('admin/users');
@@ -250,19 +272,13 @@ class AdminController {
                     $data['errors']['form_err'] = 'Something went wrong. Could not update user.';
                     $this->view('admin/user_form', $data);
                 }
-            } else {
-                $this->view('admin/user_form', $data);
-            }
+            } else { $this->view('admin/user_form', $data); }
         } else {
              $data = array_merge($commonData, [
-                'user_id' => $user['user_id'], 
-                'user_login' => $user['user_login'],
-                'user_email' => $user['user_email'],
-                'display_name' => $user['display_name'],
-                'user_role' => $user['user_role'], 
-                'department_id' => $user['department_id'] ?? null, 
-                'user_status' => (int)$user['user_status'],
-                'errors' => []
+                'user_id' => $user['user_id'], 'user_login' => $user['user_login'],
+                'user_email' => $user['user_email'], 'display_name' => $user['display_name'],
+                'user_role' => $user['user_role'], 'department_id' => $user['department_id'] ?? null, 
+                'user_status' => (int)$user['user_status'], 'errors' => []
             ]);
             $this->view('admin/user_form', $data);
         }
@@ -276,18 +292,11 @@ class AdminController {
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $userToDelete = $this->userModel->findUserById($userId);
-
-        if (!$userToDelete) {
-            $_SESSION['admin_message'] = 'Error: User not found.';
-        } elseif ($userId == $_SESSION['user_id']) {
-             $_SESSION['admin_message'] = 'Error: You cannot delete your own account.';
-        } elseif ($userToDelete['user_role'] === 'admin' && $userId == 1) { 
-            $_SESSION['admin_message'] = 'Error: The primary super administrator account (ID 1) cannot be deleted.';
-        } elseif ($this->userModel->deleteUser($userId)) {
-            $_SESSION['admin_message'] = 'User deleted successfully.';
-        } else {
-            $_SESSION['admin_message'] = 'Error: Could not delete user.';
-        }
+        if (!$userToDelete) { $_SESSION['admin_message'] = 'Error: User not found.'; }
+        elseif ($userId == $_SESSION['user_id']) { $_SESSION['admin_message'] = 'Error: You cannot delete your own account.'; }
+        elseif ($userToDelete['user_role'] === 'admin' && $userId == 1) { $_SESSION['admin_message'] = 'Error: The primary super administrator account (ID 1) cannot be deleted.';}
+        elseif ($this->userModel->deleteUser($userId)) { $_SESSION['admin_message'] = 'User deleted successfully.'; }
+        else { $_SESSION['admin_message'] = 'Error: Could not delete user.'; }
         redirect('admin/users');
     }
 
@@ -298,23 +307,54 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage departments.';
             redirect('admin');
         }
-        $departments = $this->departmentModel->getAllDepartments();
-        if ($departments) {
-            foreach ($departments as &$dept) { 
-                $dept['user_count'] = $this->departmentModel->getUserCountByDepartment($dept['department_id']);
-            }
-            unset($dept); 
-        }
-        
         $data = [
             'pageTitle' => 'Manage Departments',
-            'departments' => $departments,
             'breadcrumbs' => [ 
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Departments']
             ]
         ];
         $this->view('admin/departments', $data); 
+    }
+
+    public function ajaxGetDepartments() {
+        header('Content-Type: application/json');
+        if (!isLoggedIn() || !userHasCapability('MANAGE_DEPARTMENTS')) {
+            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not authorized"]);
+            return;
+        }
+
+        $departments = $this->departmentModel->getAllDepartments();
+        $data = [];
+
+        if ($departments) {
+            foreach ($departments as $department) {
+                $userCount = $this->departmentModel->getUserCountByDepartment($department['department_id']);
+                
+                $actionsHtml = '<a href="' . BASE_URL . 'admin/editDepartment/' . htmlspecialchars($department['department_id']) . '" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>';
+                $actionsHtml .= ' <a href="' . BASE_URL . 'admin/deleteDepartment/' . htmlspecialchars($department['department_id']) . '" 
+                                   class="btn btn-sm btn-danger" title="Delete"
+                                   onclick="return confirm(\'Are you sure you want to delete the department &quot;' . htmlspecialchars(addslashes($department['department_name'])) . '&quot;? Users in this department will be unassigned.\');">
+                                    <i class="fas fa-trash-alt"></i>
+                                </a>';
+                
+                $data[] = [
+                    "id" => htmlspecialchars($department['department_id']),
+                    "name" => htmlspecialchars($department['department_name']),
+                    "description" => nl2br(htmlspecialchars($department['department_description'] ?? 'N/A')),
+                    "user_count" => htmlspecialchars($userCount),
+                    "created_at" => htmlspecialchars(format_datetime_for_display($department['created_at'])),
+                    "actions" => $actionsHtml
+                ];
+            }
+        }
+        $output = [
+            "draw"            => intval($_GET['draw'] ?? 0),
+            "recordsTotal"    => count($data),
+            "recordsFiltered" => count($data),
+            "data"            => $data
+        ];
+        echo json_encode($output);
     }
 
     public function addDepartment() {
@@ -330,7 +370,6 @@ class AdminController {
                 ['label' => 'Add Department']
             ]
         ];
-
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
@@ -339,11 +378,7 @@ class AdminController {
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
-
-            if (empty($data['department_name'])) {
-                $data['errors']['department_name_err'] = 'Department name is required.';
-            }
-
+            if (empty($data['department_name'])) $data['errors']['department_name_err'] = 'Department name is required.';
             if (empty($data['errors'])) {
                 if ($this->departmentModel->createDepartment($data['department_name'], $data['department_description'])) {
                     $_SESSION['admin_message'] = 'Department created successfully!';
@@ -352,13 +387,10 @@ class AdminController {
                     $data['errors']['form_err'] = 'Could not create department. Name might already exist.';
                     $this->view('admin/department_form', $data); 
                 }
-            } else {
-                $this->view('admin/department_form', $data);
-            }
+            } else { $this->view('admin/department_form', $data); }
         } else {
             $data = array_merge($commonData, [
-                'department_name' => '', 'department_description' => '',
-                'errors' => []
+                'department_name' => '', 'department_description' => '', 'errors' => []
             ]);
             $this->view('admin/department_form', $data);
         }
@@ -372,22 +404,18 @@ class AdminController {
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
         $department = $this->departmentModel->getDepartmentById($departmentId);
-
         if (!$department) {
             $_SESSION['admin_message'] = 'Department not found.';
             redirect('admin/departments');
         }
-
         $commonData = [
-            'pageTitle' => 'Edit Department',
-            'department' => $department,
+            'pageTitle' => 'Edit Department', 'department' => $department,
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Departments', 'url' => 'admin/departments'],
                 ['label' => 'Edit Department: ' . htmlspecialchars($department['department_name'])]
             ]
         ];
-
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
@@ -398,11 +426,7 @@ class AdminController {
             ];
             $data = array_merge($commonData, $formData);
             $data['department'] = array_merge($department, $formData); 
-
-            if (empty($data['department_name'])) {
-                $data['errors']['department_name_err'] = 'Department name is required.';
-            }
-
+            if (empty($data['department_name'])) $data['errors']['department_name_err'] = 'Department name is required.';
             if (empty($data['errors'])) {
                 if ($this->departmentModel->updateDepartment($departmentId, $data['department_name'], $data['department_description'])) {
                     $_SESSION['admin_message'] = 'Department updated successfully!';
@@ -411,9 +435,7 @@ class AdminController {
                     $data['errors']['form_err'] = 'Could not update department. Name might already exist.';
                     $this->view('admin/department_form', $data);
                 }
-            } else {
-                $this->view('admin/department_form', $data);
-            }
+            } else { $this->view('admin/department_form', $data); }
         } else {
             $data = array_merge($commonData, [
                 'department_id' => $department['department_id'], 
@@ -432,12 +454,9 @@ class AdminController {
         }
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
-
         if ($this->departmentModel->deleteDepartment($departmentId)) {
             $_SESSION['admin_message'] = 'Department deleted successfully. Users in this department are now unassigned.';
-        } else {
-            $_SESSION['admin_message'] = 'Error: Could not delete department.';
-        }
+        } else { $_SESSION['admin_message'] = 'Error: Could not delete department.'; }
         redirect('admin/departments');
     }
 
@@ -447,119 +466,62 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
             redirect('admin');
         }
-        
         $manageableOptions = [
             'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
             'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
             'admin_email' => ['label' => 'Administrator Email (General)', 'default' => 'admin@example.com', 'type' => 'email', 'help' => 'Primary contact for site administration.'], 
             'items_per_page' => ['label' => 'Items Per Page', 'default' => 10, 'type' => 'number', 'help' => 'Number of items to show on paginated lists.'],
             'site_description' => ['label' => 'Site Description', 'default' => '', 'type' => 'textarea'],
-            'maintenance_mode' => [
-                'label' => 'Maintenance Mode', 
-                'default' => 'off', 
-                'type' => 'select', 
-                'options' => ['on' => 'On', 'off' => 'Off']
-            ],
+            'maintenance_mode' => ['label' => 'Maintenance Mode', 'default' => 'off', 'type' => 'select', 'options' => ['on' => 'On', 'off' => 'Off']],
             'site_time_format' => [ 
-                'label' => 'Site Time Format',
-                'default' => DEFAULT_TIME_FORMAT, 
-                'type' => 'select',
+                'label' => 'Site Time Format', 'default' => DEFAULT_TIME_FORMAT, 'type' => 'select',
                 'options' => [ 
                     'Y-m-d H:i:s' => date('Y-m-d H:i:s') . ' (YYYY-MM-DD HH:MM:SS - 24hr)', 
                     'Y-m-d H:i'   => date('Y-m-d H:i') . ' (YYYY-MM-DD HH:MM - 24hr)',   
                     'd/m/Y H:i'   => date('d/m/Y H:i') . ' (DD/MM/YYYY HH:MM - 24hr)',   
                     'm/d/Y h:i A' => date('m/d/Y h:i A') . ' (MM/DD/YYYY hh:mm AM/PM)',  
                     'F j, Y, g:i a' => date('F j, Y, g:i a') . ' (Month D, YYYY, h:mm am/pm)', 
-                    'g:i a'         => date('g:i a') . ' (hh:mm am/pm - Time only)',          
-                    'H:i'           => date('H:i') . ' (HH:MM - 24hr Time only)'             
-                ],
-                'help' => 'Select the default time format for displaying dates and times across the site.'
+                    'g:i a' => date('g:i a') . ' (hh:mm am/pm - Time only)', 'H:i' => date('H:i') . ' (HH:MM - 24hr Time only)'             
+                ], 'help' => 'Select the default time format for displaying dates and times across the site.'
             ],
-            // --- New Email Settings ---
-            'site_email_notifications_enabled' => [
-                'label' => 'Enable Email Notifications',
-                'default' => DEFAULT_EMAIL_NOTIFICATIONS_ENABLED, // From config.php
-                'type' => 'select',
-                'options' => ['on' => 'On (Enabled)', 'off' => 'Off (Disabled)'],
-                'help' => 'Master switch to enable or disable all system email notifications.'
-            ],
-            'site_email_from' => [
-                'label' => 'System "From" Email Address',
-                'default' => DEFAULT_SITE_EMAIL_FROM, // From config.php
-                'type' => 'email',
-                'help' => 'The email address system notifications will appear to be sent from.'
-            ],
-            'site_admin_email_notifications' => [
-                'label' => 'Admin Notification Email',
-                'default' => DEFAULT_ADMIN_EMAIL_NOTIFICATIONS, // From config.php
-                'type' => 'email',
-                'help' => 'Email address where notifications for administrators (e.g., new user registration, new reservation requests) are sent.'
-            ]
+            'site_email_notifications_enabled' => ['label' => 'Enable Email Notifications', 'default' => DEFAULT_EMAIL_NOTIFICATIONS_ENABLED, 'type' => 'select', 'options' => ['on' => 'On (Enabled)', 'off' => 'Off (Disabled)'], 'help' => 'Master switch to enable or disable all system email notifications.'],
+            'site_email_from' => ['label' => 'System "From" Email Address', 'default' => DEFAULT_SITE_EMAIL_FROM, 'type' => 'email', 'help' => 'The email address system notifications will appear to be sent from.'],
+            'site_admin_email_notifications' => ['label' => 'Admin Notification Email', 'default' => DEFAULT_ADMIN_EMAIL_NOTIFICATIONS, 'type' => 'email', 'help' => 'Email address where notifications for administrators are sent.']
         ];
         $optionKeys = array_keys($manageableOptions);
-
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
-            $settingsToSave = [];
-            $errors = [];
-
+            $settingsToSave = []; $errors = [];
             foreach ($optionKeys as $key) {
                 if (isset($_POST[$key])) {
                     $value = trim($_POST[$key]);
-                    // Basic validation for email fields
                     if (($key === 'site_email_from' || $key === 'site_admin_email_notifications' || $key === 'admin_email') && !empty($value) && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
                         $errors[$key . '_err'] = 'Please enter a valid email address for ' . $manageableOptions[$key]['label'] . '.';
-                    } else {
-                        $settingsToSave[$key] = $value;
-                    }
+                    } else { $settingsToSave[$key] = $value; }
                 }
             }
-
             if (empty($errors)) {
-                if ($this->optionModel->saveOptions($settingsToSave)) {
-                    $_SESSION['admin_message'] = 'Site settings updated successfully!';
-                } else {
-                    $_SESSION['admin_message'] = 'Error: Could not save all site settings.';
-                }
+                if ($this->optionModel->saveOptions($settingsToSave)) { $_SESSION['admin_message'] = 'Site settings updated successfully!'; }
+                else { $_SESSION['admin_message'] = 'Error: Could not save all site settings.'; }
                 redirect('admin/siteSettings');
             } else {
-                // If errors, pass them to the view
-                // Repopulate settings with POST data to show user's input
                 $currentSettings = [];
-                 foreach ($manageableOptions as $key => $details) {
-                    $currentSettings[$key] = $_POST[$key] ?? ($this->optionModel->getOption($key, $details['default'] ?? ''));
-                }
+                 foreach ($manageableOptions as $key => $details) { $currentSettings[$key] = $_POST[$key] ?? ($this->optionModel->getOption($key, $details['default'] ?? '')); }
                 $data = [
-                    'pageTitle' => 'Site Settings',
-                    'settings' => $currentSettings, // Use POSTed values for repopulation
-                    'manageableOptions' => $manageableOptions, 
-                    'errors' => $errors, // Pass errors to the view
-                    'breadcrumbs' => [
-                        ['label' => 'Admin Panel', 'url' => 'admin'],
-                        ['label' => 'Site Settings']
-                    ]
+                    'pageTitle' => 'Site Settings', 'settings' => $currentSettings, 
+                    'manageableOptions' => $manageableOptions, 'errors' => $errors, 
+                    'breadcrumbs' => [['label' => 'Admin Panel', 'url' => 'admin'], ['label' => 'Site Settings']]
                 ];
-                $this->view('admin/site_settings', $data);
-                return; // Stop further processing
+                $this->view('admin/site_settings', $data); return; 
             }
         }
-
-        // For GET request
         $currentSettings = [];
         $dbOptions = $this->optionModel->getOptions($optionKeys);
-        foreach ($manageableOptions as $key => $details) {
-             $currentSettings[$key] = $dbOptions[$key] ?? ($details['default'] ?? '');
-        }
-        
+        foreach ($manageableOptions as $key => $details) { $currentSettings[$key] = $dbOptions[$key] ?? ($details['default'] ?? ''); }
         $data = [
-            'pageTitle' => 'Site Settings',
-            'settings' => $currentSettings,
-            'manageableOptions' => $manageableOptions, 
-            'errors' => [], // No errors on GET
-            'breadcrumbs' => [
-                ['label' => 'Admin Panel', 'url' => 'admin'],
-                ['label' => 'Site Settings']
-            ]
+            'pageTitle' => 'Site Settings', 'settings' => $currentSettings,
+            'manageableOptions' => $manageableOptions, 'errors' => [], 
+            'breadcrumbs' => [['label' => 'Admin Panel', 'url' => 'admin'], ['label' => 'Site Settings']]
         ];
         $this->view('admin/site_settings', $data); 
     }
@@ -570,50 +532,26 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage role permissions.';
             redirect('admin');
         }
-
-        $definedRoles = getDefinedRoles(); 
-        $allCapabilities = CAPABILITIES; 
-
+        $definedRoles = getDefinedRoles(); $allCapabilities = CAPABILITIES; 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-            $submittedPermissions = $_POST['permissions'] ?? [];
-            $success = true;
-
+            $submittedPermissions = $_POST['permissions'] ?? []; $success = true;
             foreach (array_keys($definedRoles) as $roleName) {
-                if ($roleName === 'admin') { 
-                    continue; 
-                }
                 $roleCapabilities = $submittedPermissions[$roleName] ?? [];
                 $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities));
-                
                 if (!$this->rolePermissionModel->setRoleCapabilities($roleName, $validRoleCapabilities)) {
-                    $success = false;
-                    $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName);
-                    break; 
+                    $success = false; $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName); break; 
                 }
             }
-
-            if ($success && !isset($_SESSION['admin_message'])) {
-                $_SESSION['admin_message'] = 'Role permissions updated successfully!';
-            } elseif (!$success && !isset($_SESSION['admin_message'])) {
-                 $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';
-            }
+            if ($success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'Role permissions updated successfully!'; }
+            elseif (!$success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';}
             redirect('admin/roleAccessSettings'); 
         }
-
         $currentRoleCapabilities = [];
-        foreach (array_keys($definedRoles) as $roleName) {
-            $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName);
-        }
-        
+        foreach (array_keys($definedRoles) as $roleName) { $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName); }
         $data = [
-            'pageTitle' => 'Role Access Settings',
-            'definedRoles' => $definedRoles, 
-            'allCapabilities' => $allCapabilities, 
-            'currentRoleCapabilities' => $currentRoleCapabilities, 
-            'breadcrumbs' => [
-                ['label' => 'Admin Panel', 'url' => 'admin'],
-                ['label' => 'Role Access Settings']
-            ]
+            'pageTitle' => 'Role Access Settings', 'definedRoles' => $definedRoles, 
+            'allCapabilities' => $allCapabilities, 'currentRoleCapabilities' => $currentRoleCapabilities, 
+            'breadcrumbs' => [['label' => 'Admin Panel', 'url' => 'admin'], ['label' => 'Role Access Settings']]
         ];
         $this->view('admin/role_access_settings', $data); 
     }
@@ -624,10 +562,9 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage roles.';
             redirect('admin');
         }
-        $roles = $this->roleModel->getAllRoles();
+        // Data will be fetched by DataTables via AJAX
         $data = [
             'pageTitle' => 'Manage Roles',
-            'roles' => $roles,
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Roles']
@@ -635,6 +572,54 @@ class AdminController {
         ];
         $this->view('admin/roles_list', $data); 
     }
+
+    public function ajaxGetRoles() {
+        header('Content-Type: application/json');
+        if (!isLoggedIn() || !userHasCapability('MANAGE_ROLES')) {
+            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not authorized"]);
+            return;
+        }
+
+        $roles = $this->roleModel->getAllRoles();
+        $data = [];
+
+        if ($roles) {
+            foreach ($roles as $role) {
+                $systemRoleHtml = $role['is_system_role'] ? 
+                                  '<span class="badge bg-info text-dark">Yes</span>' : 
+                                  '<span class="badge bg-secondary">No</span>';
+                
+                $actionsHtml = '<a href="' . BASE_URL . 'admin/editRole/' . htmlspecialchars($role['role_id']) . '" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>';
+                if (!$role['is_system_role']) {
+                    $actionsHtml .= ' <a href="' . BASE_URL . 'admin/deleteRole/' . htmlspecialchars($role['role_id']) . '" 
+                                       class="btn btn-sm btn-danger" title="Delete"
+                                       onclick="return confirm(\'Are you sure you want to delete the role &quot;' . htmlspecialchars(addslashes($role['role_name'])) . '&quot;? This will also remove its permissions and reassign users to the default role.\');">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>';
+                } else {
+                    $actionsHtml .= ' <button class="btn btn-sm btn-danger" disabled title="System roles cannot be deleted"><i class="fas fa-trash-alt"></i></button>';
+                }
+
+                $data[] = [
+                    "id" => htmlspecialchars($role['role_id']),
+                    "key" => '<code>' . htmlspecialchars($role['role_key']) . '</code>',
+                    "name" => htmlspecialchars($role['role_name']),
+                    "description" => nl2br(htmlspecialchars($role['role_description'] ?? 'N/A')),
+                    "is_system" => $systemRoleHtml,
+                    "created_at" => htmlspecialchars(format_datetime_for_display($role['created_at'])),
+                    "actions" => $actionsHtml
+                ];
+            }
+        }
+        $output = [
+            "draw"            => intval($_GET['draw'] ?? 0),
+            "recordsTotal"    => count($data),
+            "recordsFiltered" => count($data),
+            "data"            => $data
+        ];
+        echo json_encode($output);
+    }
+
 
     public function addRole() {
         if (!userHasCapability('MANAGE_ROLES')) {
@@ -649,24 +634,18 @@ class AdminController {
                 ['label' => 'Add Role']
             ]
         ];
-
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
-                'role_key' => trim($_POST['role_key'] ?? ''),
-                'role_name' => trim($_POST['role_name'] ?? ''),
+                'role_key' => trim($_POST['role_key'] ?? ''), 'role_name' => trim($_POST['role_name'] ?? ''),
                 'role_description' => trim($_POST['role_description'] ?? ''),
-                'is_system_role' => isset($_POST['is_system_role']) ? 1 : 0,
-                'errors' => []
+                'is_system_role' => isset($_POST['is_system_role']) ? 1 : 0, 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
-
             if (empty($data['role_key'])) $data['errors']['role_key_err'] = 'Role Key is required (e.g., new_role_key).';
             elseif (!preg_match('/^[a-z0-9_]+$/', $data['role_key'])) $data['errors']['role_key_err'] = 'Role Key can only contain lowercase letters, numbers, and underscores.';
             if (empty($data['role_name'])) $data['errors']['role_name_err'] = 'Role Name is required.';
             if ($this->roleModel->getRoleByKey($data['role_key'])) $data['errors']['role_key_err'] = 'This Role Key already exists.';
-
-
             if (empty($data['errors'])) {
                 if ($this->roleModel->createRole($data['role_key'], $data['role_name'], $data['role_description'], $data['is_system_role'])) {
                     $_SESSION['admin_message'] = 'Role created successfully!';
@@ -675,13 +654,10 @@ class AdminController {
                     $data['errors']['form_err'] = 'Could not create role. Key might already exist.';
                     $this->view('admin/role_form', $data); 
                 }
-            } else {
-                $this->view('admin/role_form', $data);
-            }
+            } else { $this->view('admin/role_form', $data); }
         } else {
             $data = array_merge($commonData, [
-                'role_key' => '', 'role_name' => '', 'role_description' => '', 'is_system_role' => 0,
-                'errors' => []
+                'role_key' => '', 'role_name' => '', 'role_description' => '', 'is_system_role' => 0, 'errors' => []
             ]);
             $this->view('admin/role_form', $data);
         }
@@ -695,42 +671,33 @@ class AdminController {
         if ($roleId === null) redirect('admin/listRoles');
         $roleId = (int)$roleId;
         $role = $this->roleModel->getRoleById($roleId);
-
         if (!$role) {
             $_SESSION['admin_message'] = 'Role not found.';
             redirect('admin/listRoles');
         }
-
         $commonData = [
-            'pageTitle' => 'Edit Role',
-            'role' => $role, 
+            'pageTitle' => 'Edit Role', 'role' => $role, 
             'breadcrumbs' => [
                 ['label' => 'Admin Panel', 'url' => 'admin'],
                 ['label' => 'Manage Roles', 'url' => 'admin/listRoles'],
                 ['label' => 'Edit Role: ' . htmlspecialchars($role['role_name'])]
             ]
         ];
-        
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $formData = [
-                'role_id' => $roleId,
-                'role_name' => trim($_POST['role_name'] ?? ''),
+                'role_id' => $roleId, 'role_name' => trim($_POST['role_name'] ?? ''),
                 'role_description' => trim($_POST['role_description'] ?? ''),
                 'is_system_role' => ($role['role_key'] === 'admin') ? $role['is_system_role'] : (isset($_POST['is_system_role']) ? 1 : 0),
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
             $data['role'] = array_merge($role, $formData); 
-
             if (empty($data['role_name'])) $data['errors']['role_name_err'] = 'Role Name is required.';
-            
             if ($role['role_key'] === 'admin' && !$data['is_system_role']) {
                 $data['errors']['is_system_role_err'] = 'The "admin" role must remain a system role.';
                 $data['is_system_role'] = true; 
             }
-
-
             if (empty($data['errors'])) {
                 if ($this->roleModel->updateRole($roleId, $data['role_name'], $data['role_description'], $data['is_system_role'])) {
                     $_SESSION['admin_message'] = 'Role updated successfully!';
@@ -739,17 +706,12 @@ class AdminController {
                     $data['errors']['form_err'] = 'Could not update role.';
                     $this->view('admin/role_form', $data);
                 }
-            } else {
-                $this->view('admin/role_form', $data);
-            }
+            } else { $this->view('admin/role_form', $data); }
         } else {
             $data = array_merge($commonData, [
-                'role_id' => $role['role_id'],
-                'role_key' => $role['role_key'], 
-                'role_name' => $role['role_name'],
-                'role_description' => $role['role_description'],
-                'is_system_role' => $role['is_system_role'],
-                'errors' => []
+                'role_id' => $role['role_id'], 'role_key' => $role['role_key'], 
+                'role_name' => $role['role_name'], 'role_description' => $role['role_description'],
+                'is_system_role' => $role['is_system_role'], 'errors' => []
             ]);
             $this->view('admin/role_form', $data);
         }
@@ -763,23 +725,13 @@ class AdminController {
         if ($roleId === null) redirect('admin/listRoles');
         $roleId = (int)$roleId;
         $role = $this->roleModel->getRoleById($roleId);
-
-        if (!$role) {
-            $_SESSION['admin_message'] = 'Error: Role not found.';
-        } elseif ($role['is_system_role']) {
-            $_SESSION['admin_message'] = 'Error: System roles (like "'.htmlspecialchars($role['role_name']).'") cannot be deleted.';
-        } elseif ($this->roleModel->deleteRole($roleId)) {
-            $_SESSION['admin_message'] = 'Role "'.htmlspecialchars($role['role_name']).'" deleted successfully. Associated permissions removed, and users reassigned to default role if applicable.';
-        } else {
-            $_SESSION['admin_message'] = 'Error: Could not delete role "'.htmlspecialchars($role['role_name']).'".';
-        }
+        if (!$role) { $_SESSION['admin_message'] = 'Error: Role not found.'; }
+        elseif ($role['is_system_role']) { $_SESSION['admin_message'] = 'Error: System roles (like "'.htmlspecialchars($role['role_name']).'") cannot be deleted.'; }
+        elseif ($this->roleModel->deleteRole($roleId)) { $_SESSION['admin_message'] = 'Role "'.htmlspecialchars($role['role_name']).'" deleted successfully.'; }
+        else { $_SESSION['admin_message'] = 'Error: Could not delete role "'.htmlspecialchars($role['role_name']).'".'; }
         redirect('admin/listRoles');
     }
 
-
-    /**
-     * Load a view file for the admin area.
-     */
     protected function view($view, $data = []) {
         $viewFile = __DIR__ . '/../views/' . $view . '.php';
         if (file_exists($viewFile)) {

@@ -1,11 +1,17 @@
 <?php
+// This view is used by OpenOfficeController::rooms()
+// Expected variables:
+// - $pageTitle (string)
+// - $breadcrumbs (array)
+// Room data is now loaded via AJAX by DataTables
+
 require_once __DIR__ . '/../layouts/header.php';
 ?>
 
 <div class="openoffice-rooms-container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><?php echo htmlspecialchars($pageTitle ?? 'Manage Rooms'); ?></h1>
-        <?php if (userHasCapability('CREATE_ROOMS')): // Changed from MANAGE_ROOMS for consistency with controller logic ?>
+        <?php if (userHasCapability('CREATE_ROOMS')): ?>
         <a href="<?php echo BASE_URL . 'OpenOffice/addRoom'; ?>" class="btn btn-success">
             <i class="fas fa-plus"></i> Add New Room
         </a>
@@ -13,6 +19,7 @@ require_once __DIR__ . '/../layouts/header.php';
     </div>
 
     <?php
+    // Session messages display
     if (isset($_SESSION['admin_message'])) { 
         $alertType = (strpos(strtolower($_SESSION['admin_message']), 'error') === false && 
                       strpos(strtolower($_SESSION['admin_message']), 'fail') === false && 
@@ -23,81 +30,82 @@ require_once __DIR__ . '/../layouts/header.php';
              '</div>';
         unset($_SESSION['admin_message']); 
     }
-    // ... (other session messages as before) ...
+    if (isset($_SESSION['message'])) { 
+        echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
+             htmlspecialchars($_SESSION['message']) . 
+             '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
+             '</div>';
+        unset($_SESSION['message']);
+    }
+    if (isset($_SESSION['error_message'])) { 
+        echo '<div class="alert alert-danger alert-dismissible fade show" role="alert">' . 
+             htmlspecialchars($_SESSION['error_message']) . 
+             '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' .
+             '</div>';
+        unset($_SESSION['error_message']); 
+    }
     ?>
 
-    <?php if (!empty($rooms) && is_array($rooms)): ?>
-        <div class="table-responsive">
-            <table class="table table-striped table-hover datatable-l" id="roomsTable"> <thead class="table-dark">
-                    <tr>
-                        <?php if (userHasCapability('EDIT_ROOMS') || userHasCapability('DELETE_ROOMS')): // Show ID if admin has edit/delete rights for rooms ?>
-                            <th>ID</th>
-                        <?php endif; ?>
-                        <th>Room Name</th>
-                        <th>Capacity</th>
-                        <th>Location</th>
-                        <th>Equipment</th>
-                        <th>Status</th>
-                        <?php if (userHasCapability('EDIT_ROOMS') || userHasCapability('DELETE_ROOMS')): ?>
-                            <th>Last Modified</th>
-                        <?php endif; ?>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($rooms as $room): ?>
-                        <tr>
-                            <?php if (userHasCapability('EDIT_ROOMS') || userHasCapability('DELETE_ROOMS')): ?>
-                                <td><?php echo htmlspecialchars($room['object_id']); ?></td>
-                            <?php endif; ?>
-                            <td><?php echo htmlspecialchars($room['object_title']); ?></td>
-                            <td><?php echo htmlspecialchars($room['meta']['room_capacity'] ?? 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars($room['meta']['room_location'] ?? 'N/A'); ?></td>
-                            <td><?php echo nl2br(htmlspecialchars($room['meta']['room_equipment'] ?? 'N/A')); ?></td>
-                            <td>
-                                <?php 
-                                $status = $room['object_status'] ?? 'unknown';
-                                $statusLabel = ucfirst($status);
-                                $badgeClass = 'bg-secondary';
-                                if ($status === 'available') $badgeClass = 'bg-success';
-                                elseif ($status === 'unavailable') $badgeClass = 'bg-warning text-dark';
-                                elseif ($status === 'maintenance') $badgeClass = 'bg-danger';
-                                echo '<span class="badge ' . $badgeClass . '">' . htmlspecialchars($statusLabel) . '</span>';
-                                ?>
-                            </td>
-                            <?php if (userHasCapability('EDIT_ROOMS') || userHasCapability('DELETE_ROOMS')): ?>
-                                <td><?php echo htmlspecialchars(format_datetime_for_display($room['object_modified'])); ?></td>
-                            <?php endif; ?>
-                            <td>
-                                <?php if ($room['object_status'] === 'available' && userHasCapability('CREATE_ROOM_RESERVATIONS')): ?>
-                                    <a href="<?php echo BASE_URL . 'OpenOffice/createreservation/' . htmlspecialchars($room['object_id']); ?>" class="btn btn-sm btn-info me-1 mb-1" title="Book this room">
-                                        <i class="fas fa-calendar-plus"></i> Book
-                                    </a>
-                                <?php endif; ?>
-
-                                <?php if (userHasCapability('EDIT_ROOMS')): ?>
-                                    <a href="<?php echo BASE_URL . 'OpenOffice/editRoom/' . htmlspecialchars($room['object_id']); ?>" class="btn btn-sm btn-primary me-1 mb-1" title="Edit">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </a>
-                                <?php endif; ?>
-                                <?php if (userHasCapability('DELETE_ROOMS')): ?>
-                                    <a href="<?php echo BASE_URL . 'OpenOffice/deleteRoom/' . htmlspecialchars($room['object_id']); ?>" 
-                                       class="btn btn-sm btn-danger mb-1" title="Delete"
-                                       onclick="return confirm('Are you sure you want to delete the room &quot;<?php echo htmlspecialchars(addslashes($room['object_title'])); ?>&quot;? This action cannot be undone.');">
-                                        <i class="fas fa-trash-alt"></i> Delete
-                                    </a>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover" id="roomsTable"> <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Room Name</th>
+                    <th>Capacity</th>
+                    <th>Location</th>
+                    <th>Equipment</th>
+                    <th>Status</th>
+                    <th>Last Modified</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
                 </tbody>
-            </table>
-        </div>
-    <?php else: ?>
-        <div class="alert alert-info">No rooms found. <?php if (userHasCapability('CREATE_ROOMS')): ?>You can add one using the button above.<?php endif; ?></div>
-    <?php endif; ?>
+        </table>
+    </div>
 </div>
 
 <?php
 require_once __DIR__ . '/../layouts/footer.php';
 ?>
+
+<script>
+$(document).ready(function() {
+    $('#roomsTable').DataTable({
+        "processing": true, 
+        "serverSide": false, // Client-side processing for now
+        "ajax": {
+            "url": "<?php echo BASE_URL . 'OpenOffice/ajaxGetRooms'; ?>", // Ensure controller name casing is correct
+            "type": "GET",
+            "dataSrc": "data" 
+        },
+        "columns": [
+            // Conditionally show 'id' and 'modified' based on capability is tricky with pure client-side DataTables
+            // if the data structure from AJAX is fixed. For simplicity, always include them in JS columns.
+            // Visibility can be controlled by CSS or by not including them in the PHP AJAX response if not permitted.
+            // For now, we assume if VIEW_ROOMS is granted, these are okay to show.
+            // A more complex setup would involve different AJAX endpoints or column definitions based on role.
+            { "data": "id" },
+            { "data": "name" },
+            { "data": "capacity" },
+            { "data": "location" },
+            { "data": "equipment" },
+            { "data": "status" },
+            { "data": "modified" },
+            { 
+                "data": "actions",
+                "orderable": false,
+                "searchable": false
+            }
+        ],
+        "order": [[ 1, "asc" ]], // Default sort by Room Name ascending
+        // Example of how to conditionally hide columns if needed (more complex with server-side data)
+        // "columnDefs": [
+        //     {
+        //         "targets": [0, 6], // Column indexes for ID and Last Modified
+        //         "visible": <?php echo (userHasCapability('EDIT_ROOMS') || userHasCapability('DELETE_ROOMS')) ? 'true' : 'false'; ?>
+        //     }
+        // ]
+    });
+});
+</script>
