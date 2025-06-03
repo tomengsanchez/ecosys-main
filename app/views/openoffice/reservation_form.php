@@ -84,19 +84,26 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
                     </div>
 
                     <div class="mb-3">
-                        <label for="reservation_time_slot" class="form-label">Time Slot <span class="text-danger">*</span></label>
-                        <select name="reservation_time_slot" id="reservation_time_slot" 
-                                class="form-select <?php echo (!empty($errors['time_slot_err'])) ? 'is-invalid' : ''; ?>" required>
-                            <option value="">-- Select a Time Slot --</option>
+                        <label class="form-label">Time Slots <span class="text-danger">*</span></label>
+                        <div id="time_slots_container" class="row row-cols-2 row-cols-md-3 g-2">
                             <?php 
-                            foreach ($baseTimeSlots as $value => $display): ?>
-                                <option value="<?php echo htmlspecialchars($value); ?>" <?php echo (isset($reservation_time_slot) && $reservation_time_slot == $value) ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($display); ?>
-                                </option>
+                            foreach ($baseTimeSlots as $value => $display):
+                                $isChecked = (isset($reservation_time_slots) && in_array($value, $reservation_time_slots)) ? 'checked' : '';
+                            ?>
+                                <div class="col">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input time-slot-checkbox" type="checkbox" 
+                                               name="reservation_time_slots[]" id="time_slot_<?php echo htmlspecialchars($value); ?>" 
+                                               value="<?php echo htmlspecialchars($value); ?>" <?php echo $isChecked; ?>>
+                                        <label class="form-check-label" for="time_slot_<?php echo htmlspecialchars($value); ?>">
+                                            <?php echo htmlspecialchars($display); ?>
+                                        </label>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </select>
+                        </div>
                         <?php if (!empty($errors['time_slot_err'])): ?>
-                            <div class="invalid-feedback"><?php echo htmlspecialchars($errors['time_slot_err']); ?></div>
+                            <div class="text-danger small mt-1"><?php echo htmlspecialchars($errors['time_slot_err']); ?></div>
                         <?php endif; ?>
                         <p id="queueInfo" class="text-info small mt-2 mb-0"></p> 
                     </div>
@@ -113,7 +120,7 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
                     
                     <p class="text-muted small">
                         Your reservation request will be submitted for approval.
-                        Reservations are for 1-hour slots.
+                        Reservations are for 1-hour slots. You can select multiple consecutive or non-consecutive slots.
                     </p>
 
                     <div class="d-grid gap-2 mt-4">
@@ -129,13 +136,12 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('reservation_date');
-    const timeSlotSelect = document.getElementById('reservation_time_slot');
+    const timeSlotCheckboxes = document.querySelectorAll('.time-slot-checkbox');
+    const timeSlotsContainer = document.getElementById('time_slots_container');
     const queueInfoEl = document.getElementById('queueInfo');
     const roomId = typeof PHP_ROOM_ID !== 'undefined' ? PHP_ROOM_ID : 0;
     const ajaxBaseUrl = typeof BASE_AJAX_URL !== 'undefined' ? BASE_AJAX_URL : '/';
 
-    // Directly assign the PHP array, encoded by PHP, to the JavaScript variable.
-    // JSON_HEX_* options are used for security to prevent breaking out of JS context.
     const approvedReservations = <?php 
         echo json_encode(
             $approved_reservations_data_for_js ?? [], 
@@ -145,10 +151,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('[DEBUG] Approved Reservations:', approvedReservations); // For debugging
 
-    const baseTimeSlotOptions = Array.from(timeSlotSelect.options).map(opt => ({
-        value: opt.value,
-        text: opt.text,
-        originalText: opt.text
+    const baseTimeSlotData = Array.from(timeSlotCheckboxes).map(checkbox => ({
+        value: checkbox.value,
+        label: checkbox.nextElementSibling.textContent.trim(),
+        originalChecked: checkbox.checked 
     }));
 
     function isSlotBooked(slotStartTime, slotEndTime, approvedBookings) {
@@ -162,26 +168,39 @@ document.addEventListener('DOMContentLoaded', function() {
         return false; 
     }
 
-    async function fetchQueueInfo(selectedDate, timeSlotValue) {
+    async function fetchQueueInfoForSelectedSlots(selectedDate, selectedSlots) {
         queueInfoEl.textContent = 'Checking availability...';
-        if (!roomId || !selectedDate || !timeSlotValue) {
+        if (!roomId || !selectedDate || selectedSlots.length === 0) {
             queueInfoEl.textContent = ''; 
             return;
         }
         
-        const url = `${ajaxBaseUrl}Openoffice/getSlotQueueInfo?roomId=${roomId}&date=${selectedDate}&slot=${timeSlotValue}`;
-
+        // For multiple slots, we might need a different API endpoint or a loop of calls.
+        // For now, let's just check the first selected slot as an example, or indicate multiple.
+        // A more robust solution would involve a single API call that takes an array of slots.
+        const url = `${ajaxBaseUrl}Openoffice/getMultipleSlotsQueueInfo`; // New endpoint
+        
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    roomId: roomId,
+                    date: selectedDate,
+                    slots: selectedSlots
+                })
+            });
+
             if (!response.ok) {
-                // Try to get more detailed error from response if possible
                 let errorText = `HTTP error! status: ${response.status}`;
                 try {
-                    const errorData = await response.json(); // if server sends JSON error
+                    const errorData = await response.json();
                     if (errorData && errorData.error) {
                         errorText = errorData.error;
                     }
-                } catch (e) { /* ignore if response is not JSON */ }
+                } catch (e) { /* ignore */ }
                 throw new Error(errorText);
             }
             const data = await response.json();
@@ -190,11 +209,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 queueInfoEl.textContent = `Note: ${data.error}`;
                 queueInfoEl.className = 'text-danger small mt-2 mb-0';
             } else {
-                const count = data.pendingCount;
-                if (count > 0) {
-                    queueInfoEl.textContent = `There are ${count} other pending request(s) for this slot. You would be #${count + 1} in the queue.`;
+                let totalPending = 0;
+                let infoMessages = [];
+                for (const slot of selectedSlots) {
+                    if (data.pendingCounts && data.pendingCounts[slot] !== undefined) {
+                        const count = data.pendingCounts[slot];
+                        totalPending += count;
+                        if (count > 0) {
+                            infoMessages.push(`${baseTimeSlotData.find(d => d.value === slot).label}: ${count} pending request(s)`);
+                        }
+                    }
+                }
+
+                if (totalPending > 0) {
+                    queueInfoEl.innerHTML = `There are pending requests for your selected slots:<br>${infoMessages.join('<br>')}<br>You would be in queue for these slots.`;
                 } else {
-                    queueInfoEl.textContent = 'This slot currently has no other pending requests.';
+                    queueInfoEl.textContent = 'Selected slots currently have no other pending requests.';
                 }
                 queueInfoEl.className = 'text-info small mt-2 mb-0';
             }
@@ -207,17 +237,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateAvailableTimeSlots() {
         queueInfoEl.textContent = ''; 
-        if (!dateInput.value) {
-            timeSlotSelect.innerHTML = ''; 
-            baseTimeSlotOptions.forEach((optData) => {
-                const option = new Option(optData.text, optData.value);
-                if (optData.value === "") { option.selected = true; } 
-                else { option.disabled = true; }
-                timeSlotSelect.add(option);
-            });
-            return;
-        }
-
         const selectedDateStr = dateInput.value; 
         const now = new Date(); 
         now.setHours(0,0,0,0); 
@@ -226,16 +245,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return booking.start.substring(0, 10) === selectedDateStr;
         });
 
-        timeSlotSelect.innerHTML = ''; 
-        let firstAvailableSlotValue = null;
-
-        baseTimeSlotOptions.forEach((optData) => {
-            const option = new Option(optData.originalText, optData.value); 
-            if (optData.value === "") { 
-                option.selected = (timeSlotSelect.value === "" || !timeSlotSelect.value);
-                timeSlotSelect.add(option);
-                return; 
-            }
+        timeSlotCheckboxes.forEach(checkbox => {
+            const optData = baseTimeSlotData.find(d => d.value === checkbox.value);
+            if (!optData) return;
 
             const timeParts = optData.value.split('-'); 
             const slotStartHourMin = timeParts[0]; 
@@ -256,48 +268,45 @@ document.addEventListener('DOMContentLoaded', function() {
                  isBooked = isSlotBooked(slotFullStartTime, slotFullEndTime, todaysApprovedBookings);
             }
 
+            checkbox.disabled = isBooked || isPast;
+            const label = checkbox.nextElementSibling;
             if (isBooked) {
-                option.disabled = true;
-                option.text = `${optData.originalText} (Booked)`;
+                label.textContent = `${optData.label} (Booked)`;
+                checkbox.checked = false; // Uncheck if booked
             } else if (isPast) {
-                option.disabled = true;
-                option.text = `${optData.originalText} (Past)`;
+                label.textContent = `${optData.label} (Past)`;
+                checkbox.checked = false; // Uncheck if past
             } else {
-                option.disabled = false;
-                if (firstAvailableSlotValue === null) { 
-                    firstAvailableSlotValue = optData.value;
-                }
+                label.textContent = optData.label;
+                // Restore original checked state if not disabled, or keep unchecked if it was disabled before
+                checkbox.checked = optData.originalChecked && !checkbox.disabled;
             }
-            
-            if (timeSlotSelect.dataset.selectedValue === optData.value && !option.disabled) {
-                option.selected = true;
-            }
-            timeSlotSelect.add(option);
         });
         
-        if(timeSlotSelect.selectedIndex === -1 || timeSlotSelect.options[timeSlotSelect.selectedIndex].disabled || timeSlotSelect.value === ""){
-            if (firstAvailableSlotValue) {
-                timeSlotSelect.value = firstAvailableSlotValue;
-            } else {
-                 timeSlotSelect.value = ""; 
-            }
-        }
-        
-        if (timeSlotSelect.value !== "" && !timeSlotSelect.options[timeSlotSelect.selectedIndex].disabled) {
-            fetchQueueInfo(selectedDateStr, timeSlotSelect.value);
+        const selectedSlots = Array.from(timeSlotCheckboxes)
+                                .filter(cb => cb.checked && !cb.disabled)
+                                .map(cb => cb.value);
+        if (selectedSlots.length > 0 && dateInput.value) {
+            fetchQueueInfoForSelectedSlots(dateInput.value, selectedSlots);
+        } else {
+            queueInfoEl.textContent = ''; 
         }
     }
 
     if (dateInput) {
         dateInput.addEventListener('change', function() {
-            timeSlotSelect.dataset.selectedValue = timeSlotSelect.value; 
             updateAvailableTimeSlots();
         });
-        timeSlotSelect.addEventListener('change', function() {
-            if (this.value !== "" && !this.options[this.selectedIndex].disabled && dateInput.value) {
-                fetchQueueInfo(dateInput.value, this.value);
-            } else {
-                queueInfoEl.textContent = ''; 
+        timeSlotsContainer.addEventListener('change', function(event) {
+            if (event.target.classList.contains('time-slot-checkbox')) {
+                const selectedSlots = Array.from(timeSlotCheckboxes)
+                                        .filter(cb => cb.checked && !cb.disabled)
+                                        .map(cb => cb.value);
+                if (selectedSlots.length > 0 && dateInput.value) {
+                    fetchQueueInfoForSelectedSlots(dateInput.value, selectedSlots);
+                } else {
+                    queueInfoEl.textContent = ''; 
+                }
             }
         });
         updateAvailableTimeSlots(); 

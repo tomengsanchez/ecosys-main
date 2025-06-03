@@ -466,139 +466,222 @@ class OpenOfficeController {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $reservationDate = trim($_POST['reservation_date'] ?? '');
-            $reservationTimeSlot = trim($_POST['reservation_time_slot'] ?? '');
+            $reservationTimeSlots = $_POST['reservation_time_slots'] ?? []; // Expect an array
             $reservationPurpose = trim($_POST['reservation_purpose'] ?? '');
             
+            // Ensure reservationTimeSlots is an array, even if only one checkbox was selected
+            if (!is_array($reservationTimeSlots)) {
+                $reservationTimeSlots = [$reservationTimeSlots];
+            }
+
             $formData = [
                 'reservation_date' => $reservationDate,
-                'reservation_time_slot' => $reservationTimeSlot,
+                'reservation_time_slots' => $reservationTimeSlots, // Pass array to form data
                 'reservation_purpose' => $reservationPurpose,
                 'errors' => []
             ];
             $data = array_merge($commonData, $formData);
 
-            if (empty($data['reservation_date'])) $data['errors']['date_err'] = 'Reservation date is required.';
-            elseif (new DateTime($data['reservation_date']) < new DateTime(date('Y-m-d'))) $data['errors']['date_err'] = 'Reservation date cannot be in the past.';
-            if (empty($data['reservation_time_slot'])) $data['errors']['time_slot_err'] = 'Time slot is required.';
-            if (empty($data['reservation_purpose'])) $data['errors']['purpose_err'] = 'Purpose of reservation is required.';
-
-            $fullStartDateTimeStr = null;
-            $fullEndDateTimeStr = null;
-
-            if (!empty($data['reservation_date']) && !empty($data['reservation_time_slot'])) {
-                $timeParts = explode('-', $data['reservation_time_slot']);
-                if (count($timeParts) === 2) {
-                    $startTime = trim($timeParts[0]); $endTime = trim($timeParts[1]);   
-                    $fullStartDateTimeStr = $data['reservation_date'] . ' ' . $startTime . ':00'; 
-                    $fullEndDateTimeStr = $data['reservation_date'] . ' ' . $endTime . ':00';   
-                    try {
-                        $startDateTimeObj = new DateTime($fullStartDateTimeStr); $endDateTimeObj = new DateTime($fullEndDateTimeStr);
-                        if ($startDateTimeObj >= $endDateTimeObj) $data['errors']['time_slot_err'] = 'End time must be after start time.';
-                        if ($startDateTimeObj < new DateTime()) {
-                             $data['errors']['date_err'] = 'Reservation start time cannot be in the past.';
-                             if (empty($data['errors']['time_slot_err'])) $data['errors']['time_slot_err'] = 'Selected time slot is in the past.';
-                        }
-                    } catch (Exception $e) {
-                        $data['errors']['time_slot_err'] = 'Invalid time slot format processed.';
-                        $fullStartDateTimeStr = null; $fullEndDateTimeStr = null;
-                    }
-                } else { $data['errors']['time_slot_err'] = 'Invalid time slot selected.'; }
+            if (empty($data['reservation_date'])) {
+                $data['errors']['date_err'] = 'Reservation date is required.';
+            } elseif (new DateTime($data['reservation_date']) < new DateTime(date('Y-m-d'))) {
+                $data['errors']['date_err'] = 'Reservation date cannot be in the past.';
             }
             
-            if (empty($data['errors']) && $fullStartDateTimeStr && $fullEndDateTimeStr) {
-                $conflicts = $this->reservationModel->getConflictingReservations(
-                    $roomId, $fullStartDateTimeStr, $fullEndDateTimeStr, ['approved'] 
-                );
-                if ($conflicts && count($conflicts) > 0) {
-                    $data['errors']['form_err'] = 'This time slot is already booked (approved reservation exists). Please choose a different time or date.';
+            if (empty($data['reservation_time_slots'])) {
+                $data['errors']['time_slot_err'] = 'At least one time slot is required.';
+            }
+            
+            if (empty($data['reservation_purpose'])) {
+                $data['errors']['purpose_err'] = 'Purpose of reservation is required.';
+            }
+
+            $successfulReservations = [];
+            $failedReservations = [];
+            $allSlotsValid = true;
+
+            $mergedReservationRanges = [];
+            if (empty($data['errors']) && !empty($data['reservation_time_slots'])) {
+                // Merge adjacent time slots
+                $mergedReservationRanges = $this->mergeTimeSlots($data['reservation_time_slots'], $data['reservation_date']);
+
+                if (empty($mergedReservationRanges)) {
+                    $data['errors']['time_slot_err'] = 'No valid time slots could be merged.';
                 }
             }
 
-            if (empty($data['errors'])) {
-                $reservationObjectData = [
-                    'object_author' => $_SESSION['user_id'], 
-                    'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
-                    'object_type' => 'reservation', 
-                    'object_parent' => $roomId, 
-                    'object_status' => 'pending', 
-                    'object_content' => $data['reservation_purpose'], 
-                    'meta_fields' => [
-                        'reservation_start_datetime' => $fullStartDateTimeStr, 
-                        'reservation_end_datetime' => $fullEndDateTimeStr,     
-                        'reservation_user_id' => $_SESSION['user_id'] 
-                    ]
-                ];
-                $reservationId = $this->reservationModel->createObject($reservationObjectData); 
+            if (empty($data['errors']) && !empty($mergedReservationRanges)) {
+                $totalCreated = 0;
+                $reservedSlotsDisplay = [];
 
-                if ($reservationId) {
-                    $_SESSION['message'] = 'Reservation request submitted successfully! It is now pending approval.';
+                foreach ($mergedReservationRanges as $mergedRange) {
+                    $fullStartDateTimeStr = $mergedRange['start'];
+                    $fullEndDateTimeStr = $mergedRange['end'];
+                    $slotDisplay = $mergedRange['slot_display'];
+
+                    try {
+                        $startDateTimeObj = new DateTime($fullStartDateTimeStr);
+                        $endDateTimeObj = new DateTime($fullEndDateTimeStr);
+                        if ($startDateTimeObj >= $endDateTimeObj) {
+                            $failedReservations[] = [
+                                'slot' => $slotDisplay,
+                                'reason' => 'End time must be after start time.'
+                            ];
+                            $data['errors']['form_err'] = 'Some merged time slots have invalid durations.';
+                            continue;
+                        }
+                        if ($startDateTimeObj < new DateTime()) {
+                            $failedReservations[] = [
+                                'slot' => $slotDisplay,
+                                'reason' => 'Reservation start time cannot be in the past.'
+                            ];
+                            $data['errors']['form_err'] = 'Some merged time slots are in the past.';
+                            continue;
+                        }
+                    } catch (Exception $e) {
+                        $failedReservations[] = [
+                            'slot' => $slotDisplay,
+                            'reason' => 'Invalid date/time format.'
+                        ];
+                        $data['errors']['form_err'] = 'Invalid time slot format processed for one or more merged slots.';
+                        continue;
+                    }
+
+                    // Check for conflicts with approved reservations for the merged range
+                    $conflicts = $this->reservationModel->getConflictingReservations(
+                        $roomId, $fullStartDateTimeStr, $fullEndDateTimeStr, ['approved']
+                    );
+                    if ($conflicts && count($conflicts) > 0) {
+                        $failedReservations[] = [
+                            'slot' => $slotDisplay,
+                            'reason' => 'This merged time range conflicts with an existing approved reservation.'
+                        ];
+                        $data['errors']['form_err'] = 'Some selected time slots are already booked.';
+                        continue;
+                    }
+
+                    // If no conflicts, prepare for successful reservation
+                    $reservationObjectData = [
+                        'object_author' => $_SESSION['user_id'],
+                        'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
+                        'object_type' => 'reservation',
+                        'object_parent' => $roomId,
+                        'object_status' => 'pending',
+                        'object_content' => $data['reservation_purpose'],
+                        'meta_fields' => [
+                            'reservation_start_datetime' => $fullStartDateTimeStr,
+                            'reservation_end_datetime' => $fullEndDateTimeStr,
+                            'reservation_user_id' => $_SESSION['user_id']
+                        ]
+                    ];
+                    $reservationId = $this->reservationModel->createObject($reservationObjectData);
+
+                    if ($reservationId) {
+                        $totalCreated++;
+                        $reservedSlotsDisplay[] = $slotDisplay;
+                    } else {
+                        $failedReservations[] = [
+                            'slot' => $slotDisplay,
+                            'reason' => 'Failed to save to database.'
+                        ];
+                    }
+                }
+
+                if ($totalCreated > 0) {
+                    $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)! They are now pending approval.";
+                    if (!empty($failedReservations)) {
+                        $_SESSION['error_message'] = "Some merged slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                    }
+
                     $user = $this->userModel->findUserById($_SESSION['user_id']);
                     $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
-                    $formattedStartTime = format_datetime_for_display($fullStartDateTimeStr);
-                    $formattedEndTime = format_datetime_for_display($fullEndDateTimeStr);
+
+                    $slotsListHtml = "<ul>";
+                    foreach ($reservedSlotsDisplay as $slotDisp) {
+                        $slotsListHtml .= "<li>{$slotDisp}</li>";
+                    }
+                    $slotsListHtml .= "</ul>";
+
                     if ($user && !empty($user['user_email'])) {
-                        send_system_email($user['user_email'], "Your Reservation Request for {$room['object_title']} is Pending", "Dear {$user['display_name']},\n\nYour reservation request for '{$room['object_title']}' from {$formattedStartTime} to {$formattedEndTime} is pending approval.\n\nPurpose: {$data['reservation_purpose']}\n\nView status: " . BASE_URL . "openoffice/myreservations");
+                        send_system_email($user['user_email'], "Your Reservation Request for {$room['object_title']} is Pending", "Dear {$user['display_name']},\n\nYour reservation request(s) for '{$room['object_title']}' for the following time slot(s) are pending approval:\n{$slotsListHtml}\nPurpose: {$data['reservation_purpose']}\n\nView status: " . BASE_URL . "openoffice/myreservations");
                     }
                     if ($adminEmail) {
-                        send_system_email($adminEmail, "New Room Reservation Request: {$room['object_title']} by {$user['display_name']}", "User: {$user['display_name']} ({$user['user_email']})\nRoom: {$room['object_title']} (ID: {$roomId})\nPurpose: {$data['reservation_purpose']}\nStart: {$formattedStartTime}\nEnd: {$formattedEndTime}\n\nReview: " . BASE_URL . "openoffice/roomreservations");
+                        send_system_email($adminEmail, "New Room Reservation Request: {$room['object_title']} by {$user['display_name']}", "User: {$user['display_name']} ({$user['user_email']})\nRoom: {$room['object_title']} (ID: {$roomId})\nPurpose: {$data['reservation_purpose']}\nTime Slots:\n{$slotsListHtml}\n\nReview: " . BASE_URL . "openoffice/roomreservations");
                     }
-                    redirect('openoffice/myreservations'); 
+                    redirect('openoffice/myreservations');
                 } else {
-                    $data['errors']['form_err'] = 'Something went wrong. Could not submit reservation request.';
+                    $data['errors']['form_err'] = 'Something went wrong. No reservation requests could be submitted.';
+                    if (!empty($failedReservations)) {
+                        $data['errors']['form_err'] .= " Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                    }
                     $this->view('openoffice/reservation_form', $data);
                 }
             } else {
-                $data['reservation_date'] = $reservationDate; $data['reservation_time_slot'] = $reservationTimeSlot; $data['reservation_purpose'] = $reservationPurpose;
+                // If there are validation errors or no successful reservations to process
+                if (!empty($failedReservations)) {
+                    $data['errors']['form_err'] = ($data['errors']['form_err'] ?? '') . " Some slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                }
+                $data['reservation_date'] = $reservationDate;
+                $data['reservation_time_slots'] = $reservationTimeSlots; // Keep selected slots for repopulation
+                $data['reservation_purpose'] = $reservationPurpose;
                 $this->view('openoffice/reservation_form', $data);
             }
         } else {
-            $data = array_merge($commonData, ['reservation_date' => date('Y-m-d'), 'reservation_time_slot' => '', 'reservation_purpose' => '', 'errors' => []]);
+            $data = array_merge($commonData, ['reservation_date' => date('Y-m-d'), 'reservation_time_slots' => [], 'reservation_purpose' => '', 'errors' => []]);
             $this->view('openoffice/reservation_form', $data); 
         }
     }
 
     /**
-     * AJAX endpoint to get queue information for a specific room and time slot.
+     * AJAX endpoint to get queue information for multiple selected room time slots.
+     * Expects POST data: { roomId: int, date: string, slots: string[] }
      */
-    public function getSlotQueueInfo() {
+    public function getMultipleSlotsQueueInfo() {
         header('Content-Type: application/json');
-        $roomId = filter_input(INPUT_GET, 'roomId', FILTER_VALIDATE_INT);
-        $date = filter_input(INPUT_GET, 'date', FILTER_SANITIZE_STRING);
-        $slot = filter_input(INPUT_GET, 'slot', FILTER_SANITIZE_STRING); // e.g., "08:00-09:00"
+        $input = json_decode(file_get_contents('php://input'), true);
 
-        if (!$roomId || !$date || !$slot) {
-            echo json_encode(['error' => 'Missing parameters.']);
+        $roomId = filter_var($input['roomId'] ?? null, FILTER_VALIDATE_INT);
+        $date = filter_var($input['date'] ?? null, FILTER_SANITIZE_STRING);
+        $slots = $input['slots'] ?? []; // Array of slot strings, e.g., ["08:00-09:00", "09:00-10:00"]
+
+        if (!$roomId || !$date || !is_array($slots) || empty($slots)) {
+            echo json_encode(['error' => 'Missing or invalid parameters.']);
             exit;
         }
 
-        $timeParts = explode('-', $slot);
-        if (count($timeParts) !== 2) {
-            echo json_encode(['error' => 'Invalid slot format.']);
-            exit;
-        }
+        $pendingCounts = [];
+        foreach ($slots as $slot) {
+            $timeParts = explode('-', $slot);
+            if (count($timeParts) !== 2) {
+                $pendingCounts[$slot] = ['error' => 'Invalid slot format.'];
+                continue;
+            }
 
-        $startTimeStr = $date . ' ' . trim($timeParts[0]) . ':00';
-        $endTimeStr = $date . ' ' . trim($timeParts[1]) . ':00';
+            $startTimeStr = $date . ' ' . trim($timeParts[0]) . ':00';
+            $endTimeStr = $date . ' ' . trim($timeParts[1]) . ':00';
 
-        try {
-            new DateTime($startTimeStr); // Validate date/time format
-            new DateTime($endTimeStr);
-        } catch (Exception $e) {
-            echo json_encode(['error' => 'Invalid date or time format in slot.']);
-            exit;
-        }
-        
-        $conflictingPending = $this->reservationModel->getConflictingReservations(
-            $roomId, $startTimeStr, $endTimeStr, ['pending']
-        );
+            try {
+                new DateTime($startTimeStr); // Validate date/time format
+                new DateTime($endTimeStr);
+            } catch (Exception $e) {
+                $pendingCounts[$slot] = ['error' => 'Invalid date or time format in slot.'];
+                continue;
+            }
+            
+            $conflictingPending = $this->reservationModel->getConflictingReservations(
+                $roomId, $startTimeStr, $endTimeStr, ['pending']
+            );
 
-        if ($conflictingPending === false) {
-            echo json_encode(['error' => 'Could not retrieve queue information.']);
-            exit;
+            if ($conflictingPending === false) {
+                $pendingCounts[$slot] = ['error' => 'Could not retrieve queue information.'];
+            } else {
+                $pendingCounts[$slot] = count($conflictingPending);
+            }
         }
-        echo json_encode(['pendingCount' => count($conflictingPending)]);
+        echo json_encode(['pendingCounts' => $pendingCounts]);
         exit;
     }
+
 
 
     public function myreservations() {
@@ -894,6 +977,91 @@ class OpenOfficeController {
              $_SESSION['error_message'] = "Reservation record ID {$reservationId} not found.";
         }
         redirect('openoffice/roomreservations');
+    }
+
+    /**
+     * Helper function to merge adjacent time slots into continuous blocks.
+     * Assumes slots are in "HH:MM-HH:MM" format and belong to the same date.
+     *
+     * @param array $slots An array of time slot strings (e.g., ["08:00-09:00", "09:00-10:00"]).
+     * @param string $date The date string (YYYY-MM-DD).
+     * @return array An array of merged time ranges, each with 'start' and 'end' full datetime strings.
+     */
+    private function mergeTimeSlots(array $slots, string $date): array {
+        if (empty($slots)) {
+            return [];
+        }
+
+        // Sort slots to ensure correct order for merging
+        usort($slots, function($a, $b) {
+            $startA = strtotime(explode('-', $a)[0]);
+            $startB = strtotime(explode('-', $b)[0]);
+            return $startA - $startB;
+        });
+
+        $mergedRanges = [];
+        $currentMerge = null;
+
+        foreach ($slots as $slot) {
+            $timeParts = explode('-', $slot);
+            if (count($timeParts) !== 2) {
+                // Skip malformed slots, or handle as an error
+                continue;
+            }
+            $slotStart = trim($timeParts[0]);
+            $slotEnd = trim($timeParts[1]);
+
+            $fullStartDateTimeStr = $date . ' ' . $slotStart . ':00';
+            $fullEndDateTimeStr = $date . ' ' . $slotEnd . ':00';
+
+            try {
+                $currentSlotStart = new DateTime($fullStartDateTimeStr);
+                $currentSlotEnd = new DateTime($fullEndDateTimeStr);
+            } catch (Exception $e) {
+                // Handle invalid date/time format
+                continue;
+            }
+
+            if ($currentMerge === null) {
+                // First slot, start a new merge block
+                $currentMerge = [
+                    'start' => $currentSlotStart,
+                    'end' => $currentSlotEnd
+                ];
+            } else {
+                // Check if current slot is adjacent to or overlaps with the current merge block
+                // An adjacent slot's start time should be equal to the current merge's end time
+                // Or, if there's a slight overlap (e.g., 09:00-10:00 and 09:30-10:30), extend the end time
+                if ($currentSlotStart <= $currentMerge['end']) {
+                    // Merge by extending the end time if the current slot extends further
+                    if ($currentSlotEnd > $currentMerge['end']) {
+                        $currentMerge['end'] = $currentSlotEnd;
+                    }
+                } else {
+                    // Not adjacent/overlapping, so finalize the current merge and start a new one
+                    $mergedRanges[] = [
+                        'start' => $currentMerge['start']->format('Y-m-d H:i:s'),
+                        'end' => $currentMerge['end']->format('Y-m-d H:i:s'),
+                        'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')
+                    ];
+                    $currentMerge = [
+                        'start' => $currentSlotStart,
+                        'end' => $currentSlotEnd
+                    ];
+                }
+            }
+        }
+
+        // Add the last merged block if it exists
+        if ($currentMerge !== null) {
+            $mergedRanges[] = [
+                'start' => $currentMerge['start']->format('Y-m-d H:i:s'),
+                'end' => $currentMerge['end']->format('Y-m-d H:i:s'),
+                'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')
+            ];
+        }
+
+        return $mergedRanges;
     }
 
 
