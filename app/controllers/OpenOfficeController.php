@@ -76,6 +76,9 @@ class OpenOfficeController {
         if ($rooms) {
             foreach ($rooms as $room) {
                 $actionsHtml = '';
+                // Add View link
+                $actionsHtml .= '<a href="' . BASE_URL . 'openoffice/roomDetails/' . htmlspecialchars($room['object_id']) . '" class="btn btn-sm btn-info me-1" title="View Details"><i class="fas fa-eye"></i></a>';
+                
                 if (userHasCapability('EDIT_ROOMS')) {
                     $actionsHtml .= '<a href="' . BASE_URL . 'openoffice/editRoom/' . htmlspecialchars($room['object_id']) . '" class="btn btn-sm btn-primary me-1" title="Edit"><i class="fas fa-edit"></i></a>';
                 }
@@ -314,6 +317,243 @@ class OpenOfficeController {
             $_SESSION['admin_message'] = 'Error: Could not delete room "' . htmlspecialchars($room['object_title']) . '".';
         }
         redirect('openoffice/rooms');
+    }
+
+    /**
+     * Display details for a specific room, including pending and approved reservations.
+     * Protected by VIEW_ROOMS capability.
+     */
+    public function roomDetails($roomId = null) {
+        if (!userHasCapability('VIEW_ROOMS')) {
+            $_SESSION['error_message'] = "You do not have permission to view room details.";
+            redirect('dashboard');
+        }
+
+        if ($roomId === null) {
+            $_SESSION['error_message'] = 'No room ID specified.';
+            redirect('openoffice/rooms');
+        }
+
+        $roomId = (int)$roomId;
+        $room = $this->roomModel->getRoomById($roomId);
+
+        if (!$room) {
+            $_SESSION['error_message'] = 'Room not found.';
+            redirect('openoffice/rooms');
+        }
+
+        $data = [
+            'pageTitle' => 'Room Details: ' . htmlspecialchars($room['object_title']),
+            'room' => $room, // Pass room data to the view
+            'breadcrumbs' => [
+                ['label' => 'Open Office', 'url' => 'openoffice/rooms'],
+                ['label' => 'Rooms', 'url' => 'openoffice/rooms'],
+                ['label' => 'Room Details: ' . htmlspecialchars($room['object_title'])]
+            ]
+        ];
+        $this->view('openoffice/room_details', $data);
+    }
+
+    /**
+     * AJAX endpoint to fetch room details and its reservations (pending/approved).
+     * Used by the room_details.php page to populate data dynamically.
+     */
+    public function roomDetailsData($roomId = null) {
+        header('Content-Type: application/json');
+
+        if (!userHasCapability('VIEW_ROOMS')) {
+            echo json_encode(['error' => 'Permission denied.']);
+            exit;
+        }
+
+        if ($roomId === null) {
+            echo json_encode(['error' => 'No room ID specified.']);
+            exit;
+        }
+
+        $roomId = (int)$roomId;
+        $room = $this->roomModel->getRoomById($roomId);
+
+        if (!$room) {
+            echo json_encode(['error' => 'Room not found.']);
+            exit;
+        }
+
+        $selectedDate = $_GET['date'] ?? null;
+        
+        $pendingReservations = [];
+        $approvedReservations = [];
+
+        if ($selectedDate) {
+            $startOfDay = $selectedDate . ' 00:00:00';
+            $endOfDay = $selectedDate . ' 23:59:59';
+
+        // Fetch pending reservations for the room that conflict with the selected day
+        $pendingReservations = $this->reservationModel->getConflictingReservations(
+            $roomId,
+            $startOfDay,
+            $endOfDay,
+            ['pending']
+        );
+
+        // Fetch approved reservations for the room that conflict with the selected day
+        $approvedReservations = $this->reservationModel->getConflictingReservations(
+            $roomId,
+            $startOfDay,
+            $endOfDay,
+            ['approved']
+        );
+        } else {
+            // If no date is selected, fetch all pending and approved reservations (or a default range)
+            // For now, let's fetch all if no date is provided, as per original behavior before date filter
+            $pendingReservations = $this->reservationModel->getReservationsByRoomId(
+                $roomId,
+                ['o.object_status' => 'pending'],
+                ['orderby' => 'meta.reservation_start_datetime', 'orderdir' => 'ASC']
+            );
+
+            $approvedReservations = $this->reservationModel->getReservationsByRoomId(
+                $roomId,
+                ['o.object_status' => 'approved'],
+                ['orderby' => 'meta.reservation_start_datetime', 'orderdir' => 'ASC']
+            );
+        }
+
+        // Enrich reservation data with user names and formatted times
+        $enrichedPending = [];
+        if ($pendingReservations) {
+            foreach ($pendingReservations as $res) {
+                $user = $this->userModel->findUserById($res['object_author']);
+                $res['user_name'] = $user ? $user['display_name'] : 'Unknown User';
+                // Access directly as selected in getConflictingReservations
+                $res['start_time'] = format_datetime_for_display($res['reservation_start_datetime'] ?? '');
+                $res['end_time'] = format_datetime_for_display($res['reservation_end_datetime'] ?? '');
+                $res['purpose'] = htmlspecialchars($res['object_content'] ?? 'N/A');
+                $enrichedPending[] = $res;
+            }
+        }
+
+        $enrichedApproved = [];
+        if ($approvedReservations) {
+            foreach ($approvedReservations as $res) {
+                $user = $this->userModel->findUserById($res['object_author']);
+                $res['user_name'] = $user ? $user['display_name'] : 'Unknown User';
+                // Access directly as selected in getConflictingReservations
+                $res['start_time'] = format_datetime_for_display($res['reservation_start_datetime'] ?? '');
+                $res['end_time'] = format_datetime_for_display($res['reservation_end_datetime'] ?? '');
+                $res['purpose'] = htmlspecialchars($res['object_content'] ?? 'N/A');
+                $enrichedApproved[] = $res;
+            }
+        }
+
+        echo json_encode([
+            'room' => [
+                'id' => $room['object_id'],
+                'name' => htmlspecialchars($room['object_title']),
+                'capacity' => htmlspecialchars($room['meta']['room_capacity'] ?? 'N/A'),
+                'description' => nl2br(htmlspecialchars($room['object_content'] ?? 'N/A'))
+            ],
+            'pendingReservations' => $enrichedPending,
+            'approvedReservations' => $enrichedApproved
+        ]);
+        exit;
+    }
+
+    /**
+     * AJAX endpoint to update the status of a reservation (approve/deny).
+     * Expects POST data: { reservation_id: int, status: string ('approved' or 'denied') }
+     * Protected by APPROVE_DENY_ROOM_RESERVATIONS capability.
+     */
+    public function updateReservationStatus() {
+        header('Content-Type: application/json');
+
+        if (!userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')) {
+            echo json_encode(['success' => false, 'message' => 'Permission denied.']);
+            exit;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        $reservationId = filter_var($input['reservation_id'] ?? null, FILTER_VALIDATE_INT);
+        $status = filter_var($input['status'] ?? null, FILTER_SANITIZE_STRING);
+
+        if (!$reservationId || !in_array($status, ['approved', 'denied'])) {
+            echo json_encode(['success' => false, 'message' => 'Invalid parameters.']);
+            exit;
+        }
+
+        $reservation = $this->reservationModel->getObjectById($reservationId);
+
+        if (!$reservation || $reservation['object_type'] !== 'reservation') {
+            echo json_encode(['success' => false, 'message' => 'Reservation not found.']);
+            exit;
+        }
+
+        if ($reservation['object_status'] === $status) {
+            echo json_encode(['success' => true, 'message' => 'Reservation already ' . $status . '.']);
+            exit;
+        }
+
+        $message = '';
+        $success = false;
+
+        if ($status === 'approved') {
+            $roomId = $reservation['object_parent'];
+            $startTime = $reservation['meta']['reservation_start_datetime'] ?? null;
+            $endTime = $reservation['meta']['reservation_end_datetime'] ?? null;
+
+            if (!$startTime || !$endTime) {
+                $message = 'Error: Reservation is missing start or end time data.';
+            } else {
+                $approvedConflicts = $this->reservationModel->getConflictingReservations($roomId, $startTime, $endTime, ['approved'], $reservationId);
+
+                if ($approvedConflicts && count($approvedConflicts) > 0) {
+                    $message = 'Error: Cannot approve. This time slot conflicts with an existing approved reservation.';
+                } else {
+                    if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
+                        $success = true;
+                        $message = 'Reservation approved successfully.';
+                        $user = $this->userModel->findUserById($reservation['object_author']);
+                        $roomFromDb = $this->roomModel->getRoomById($roomId);
+                        if ($user && !empty($user['user_email']) && $roomFromDb) {
+                            send_system_email($user['user_email'], "Your Reservation for {$roomFromDb['object_title']} has been Approved", "Dear {$user['display_name']},\n\nYour reservation for '{$roomFromDb['object_title']}' from " . format_datetime_for_display($startTime) . " to " . format_datetime_for_display($endTime) . " has been approved.\n\nPurpose: {$reservation['object_content']}");
+                        }
+                        $overlappingPending = $this->reservationModel->getConflictingReservations($roomId, $startTime, $endTime, ['pending'], $reservationId);
+                        if ($overlappingPending) {
+                            $deniedCount = 0;
+                            foreach ($overlappingPending as $pendingConflict) {
+                                if ($this->reservationModel->updateObject($pendingConflict['object_id'], ['object_status' => 'denied'])) {
+                                    $deniedCount++;
+                                    $conflictUser = $this->userModel->findUserById($pendingConflict['object_author']);
+                                    $conflictRoom = $this->roomModel->getRoomById($roomId);
+                                    if ($conflictUser && !empty($conflictUser['user_email']) && $conflictRoom) {
+                                        send_system_email($conflictUser['user_email'], "Your Reservation Request for {$conflictRoom['object_title']} was Denied", "Dear {$conflictUser['display_name']},\n\nYour reservation for '{$conflictRoom['object_title']}' for " . format_datetime_for_display($pendingConflict['meta']['reservation_start_datetime']) . " to " . format_datetime_for_display($pendingConflict['meta']['reservation_end_datetime']) . " was denied due to a conflict.");
+                                    }
+                                }
+                            }
+                            if ($deniedCount > 0) $message .= " {$deniedCount} overlapping pending reservation(s) automatically denied.";
+                        }
+                    } else {
+                        $message = 'Could not approve reservation due to a system error.';
+                    }
+                }
+            }
+        } elseif ($status === 'denied') {
+            $originalStatus = $reservation['object_status'];
+            if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
+                $success = true;
+                $message = 'Reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
+                $user = $this->userModel->findUserById($reservation['object_author']);
+                $roomFromDb = $this->roomModel->getRoomById($reservation['object_parent']);
+                if ($user && !empty($user['user_email']) && $roomFromDb) {
+                     send_system_email($user['user_email'], "Your Reservation Request for {$roomFromDb['object_title']} was " . ($originalStatus === 'approved' ? 'Revoked/Denied' : 'Denied'), "Dear {$user['display_name']},\n\nYour reservation for '{$roomFromDb['object_title']}' for " . format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '') . " to " . format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '') . " has been " . ($originalStatus === 'approved' ? 'revoked/denied.' : 'denied.'));
+                }
+            } else {
+                $message = 'Could not deny reservation.';
+            }
+        }
+
+        echo json_encode(['success' => $success, 'message' => $message]);
+        exit;
     }
 
     // --- Room Reservation Methods ---

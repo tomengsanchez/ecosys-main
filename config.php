@@ -13,6 +13,7 @@ define('DB_CHARSET', 'utf8mb4');
 define('DB_COLLATE', '');
 
 define('BASE_URL', '/mainsystem/'); 
+define('VIEWS_DIR', __DIR__ . '/app/views/');
 
 // Default Timezone
 date_default_timezone_set('Asia/Manila'); 
