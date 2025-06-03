@@ -34,52 +34,46 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
 }
 
 // --- Navigation Configuration Array ---
+// URLs are cased to match controller class prefixes (e.g., OpenOfficeController -> OpenOffice/)
+// The router in index.php (ucfirst(strtolower($segment))) will correctly map these.
 $navigationConfig = [
     [
         'label' => 'Dashboard',
-        'url' => 'dashboard',
+        'url' => 'Dashboard', // Changed from 'dashboard'
         'icon' => 'fas fa-tachometer-alt me-1',
-        // No capability means visible to all logged-in users
     ],
     [
         'label' => 'Open Office',
         'icon' => 'fas fa-door-open me-1',
         'id' => 'openOfficeDropdown',
-        'base_path' => 'openoffice', // For isDropdownSectionActive
-        // Visibility of this dropdown depends on its children's capabilities
+        'base_path' => 'OpenOffice', // Changed from 'openoffice'
         'children' => [
             [
                 'label' => 'Manage Rooms',
-                'url' => 'openoffice/rooms',
+                'url' => 'OpenOffice/rooms', // Changed
                 'capability' => 'VIEW_ROOMS'
             ],
             [
                 'label' => 'Room Reservations (Admin)',
-                'url' => 'openoffice/roomreservations',
+                'url' => 'OpenOffice/roomreservations', // Changed
                 'capability' => 'VIEW_ALL_ROOM_RESERVATIONS'
             ],
             [
                 'label' => 'My Reservations',
-                'url' => 'openoffice/myreservations',
-                // No capability, visible to all logged-in users
+                'url' => 'OpenOffice/myreservations', // Changed
             ],
-            // Example for future items (currently commented out in original)
-            // [ 'type' => 'divider' ],
-            // [ 'label' => 'Vehicle Reservation', 'url' => 'openoffice/vehicles', 'capability' => 'MANAGE_VEHICLE_RESERVATIONS' ],
-            // [ 'label' => 'Service Request', 'url' => 'openoffice/services', 'capability' => 'MANAGE_SERVICE_REQUESTS' ],
         ]
     ],
     [
         'label' => 'IT Department',
         'icon' => 'fas fa-desktop me-1',
         'id' => 'itDepartmentDropdown',
-        'base_path' => 'it',
-        'capability' => 'MANAGE_IT_REQUESTS', // Dropdown itself requires this
+        'base_path' => 'It', // Changed, assuming ItController
+        'capability' => 'MANAGE_IT_REQUESTS',
         'children' => [
             [
                 'label' => 'Requests',
-                'url' => 'it/requests',
-                // Inherits capability from parent if not specified, or can be more granular
+                'url' => 'It/requests', // Changed
             ],
         ]
     ],
@@ -87,12 +81,12 @@ $navigationConfig = [
         'label' => 'Rap',
         'icon' => 'fas fa-calendar-alt me-1',
         'id' => 'rapDropdown',
-        'base_path' => 'rap',
+        'base_path' => 'Rap', // Changed, assuming RapController
         'capability' => 'MANAGE_RAP_CALENDAR',
         'children' => [
             [
                 'label' => 'Calendar Of Activities',
-                'url' => 'rap/calendar',
+                'url' => 'Rap/calendar', // Changed
             ],
         ]
     ],
@@ -100,12 +94,12 @@ $navigationConfig = [
         'label' => 'SES',
         'icon' => 'fas fa-chart-bar me-1',
         'id' => 'sesDropdown',
-        'base_path' => 'ses',
+        'base_path' => 'Ses', // Changed, assuming SesController
         'capability' => 'MANAGE_SES_DATA',
         'children' => [
             [
                 'label' => 'SES Data',
-                'url' => 'ses/data',
+                'url' => 'Ses/data', // Changed
             ],
         ]
     ],
@@ -243,6 +237,7 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                  <?php if (isLoggedIn()): ?>
                     <?php 
                     // Admin dropdown remains hardcoded for now, can be integrated later
+                    // For consistency, its links should also be reviewed for casing if this approach is adopted globally
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
