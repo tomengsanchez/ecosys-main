@@ -99,7 +99,7 @@ function initializeReservationsLogic() {
 
 
         $.ajax({
-            url: '<?php echo BASE_URL . "openoffice/ajaxRoomReservationsData"; ?>',
+            url: '<?php echo BASE_URL . "OpenOffice/ajaxRoomReservationsData"; ?>', // MODIFIED: Changed to OpenOffice (uppercase O)
             type: 'POST',
             dataType: 'json',
             data: {
@@ -118,25 +118,34 @@ function initializeReservationsLogic() {
                         // Ensure userHasCapability is available or links are shown/hidden by controller if preferred
                         // For simplicity, actions are generated based on status here.
                         // A more robust solution might involve the AJAX response indicating which actions are permissible.
-                        if (reservation.object_status === 'pending') {
+                        if (reservation.object_status === 'pending' && <?php echo json_encode(userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')); ?>) {
                             actionsHtml = `
-                                <a href="<?php echo BASE_URL . 'openoffice/approvereservation/'; ?>${escapeHtml(String(reservation.object_id))}"
+                                <a href="<?php echo BASE_URL . 'OpenOffice/approvereservation/'; ?>${escapeHtml(String(reservation.object_id))}"
                                    class="btn btn-sm btn-success mb-1 action-btn" data-action="approve" data-id="${escapeHtml(String(reservation.object_id))}" title="Approve">
                                     <i class="fas fa-check"></i> Approve
                                 </a>
-                                <a href="<?php echo BASE_URL . 'openoffice/denyreservation/'; ?>${escapeHtml(String(reservation.object_id))}"
+                                <a href="<?php echo BASE_URL . 'OpenOffice/denyreservation/'; ?>${escapeHtml(String(reservation.object_id))}"
                                    class="btn btn-sm btn-danger mb-1 action-btn" data-action="deny" data-id="${escapeHtml(String(reservation.object_id))}" title="Deny">
                                     <i class="fas fa-times"></i> Deny
                                 </a>`;
-                        } else if (reservation.object_status === 'approved') {
+                        } else if (reservation.object_status === 'approved' && <?php echo json_encode(userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')); ?>) {
                             actionsHtml = `
-                                <a href="<?php echo BASE_URL . 'openoffice/denyreservation/'; ?>${escapeHtml(String(reservation.object_id))}"
+                                <a href="<?php echo BASE_URL . 'OpenOffice/denyreservation/'; ?>${escapeHtml(String(reservation.object_id))}"
                                    class="btn btn-sm btn-warning text-dark mb-1 action-btn" data-action="revoke" data-id="${escapeHtml(String(reservation.object_id))}" title="Revoke Approval (Deny)">
                                     <i class="fas fa-undo"></i> Revoke
                                 </a>`;
                         } else {
                             actionsHtml = '<span class="text-muted small">No actions</span>';
                         }
+                         // Add delete action if user has capability
+                        if (<?php echo json_encode(userHasCapability('DELETE_ANY_ROOM_RESERVATION')); ?>) { // Assuming this capability exists
+                             actionsHtml += ` <a href="<?php echo BASE_URL . 'OpenOffice/deleteAnyReservation/'; ?>${escapeHtml(String(reservation.object_id))}" 
+                                                class="btn btn-sm btn-outline-danger mb-1 action-btn" data-action="delete" data-id="${escapeHtml(String(reservation.object_id))}" title="Delete Record"
+                                                onclick="return confirm('Are you sure you want to DELETE room reservation record ID ${escapeHtml(String(reservation.object_id))}? This cannot be undone.');">
+                                                <i class="fas fa-trash-alt"></i>
+                                            </a>`;
+                        }
+
 
                         let statusKey = reservation.object_status || 'unknown';
                         let statusLabel = reservationStatuses[statusKey] || statusKey.charAt(0).toUpperCase() + statusKey.slice(1);
@@ -280,28 +289,41 @@ function initializeReservationsLogic() {
 
     $('#reservationsTableBody').on('click', '.action-btn', function(e) {
         e.preventDefault();
-        const actionUrl = $(this).attr('href');
-        const actionType = $(this).data('action');
+        const action = $(this).data('action');
         const reservationId = $(this).data('id');
-        const confirmationMessage = `Are you sure you want to ${actionType} this reservation (ID: ${escapeHtml(String(reservationId))})?`;
+        let actionUrl = $(this).attr('href'); // Get URL from href for approve/deny/revoke
+        let confirmationMessage = '';
+        let httpMethod = 'GET'; // Default for links
+
+        if (action === 'delete') {
+            // For delete, we might want to construct the URL if not directly in href or use a specific pattern
+            actionUrl = `<?php echo BASE_URL . 'OpenOffice/deleteAnyReservation/'; ?>${reservationId}`;
+            confirmationMessage = `Are you sure you want to DELETE room reservation record ID ${reservationId}? This cannot be undone.`;
+            // httpMethod = 'POST'; // Or DELETE, if your server handles it
+        } else if (action === 'approve') {
+             confirmationMessage = `Are you sure you want to APPROVE room reservation ID ${reservationId}?`;
+        } else if (action === 'deny' || action === 'revoke') {
+             confirmationMessage = `Are you sure you want to DENY/REVOKE room reservation ID ${reservationId}?`;
+        } else {
+            return; // Unknown action
+        }
+
 
         if (confirm(confirmationMessage)) {
             $.ajax({
                 url: actionUrl,
-                type: 'GET', // Assuming GET for these actions as per typical link behavior
-                             // Change to POST if your controller actions expect POST for modifications
-                dataType: 'json', // Expecting JSON response from controller for actions
+                type: httpMethod, 
+                dataType: 'json', 
                 beforeSend: function() {
-                    // Optional: show a loading indicator specific to the action
                     $(e.target).closest('td').html('<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Processing...</span></div>');
                 },
-                success: function(response) { // Expecting { success: true/false, message: "..." }
+                success: function(response) { 
                     if (response && response.message) {
                         displayAjaxMessage(response.message, response.success ? 'success' : 'danger');
                     } else {
                         displayAjaxMessage('Action processed. Refreshing list...', 'info');
                     }
-                    fetchReservations(currentPage); // Refresh current page
+                    fetchReservations(currentPage); 
                 },
                 error: function(xhr, status, error) {
                     console.error("Action Error:", status, error, xhr.responseText);
@@ -311,12 +333,11 @@ function initializeReservationsLogic() {
                         if (errResponse && errResponse.message) {
                             errorMsg += ' ' + errResponse.message;
                         }
-                    } catch (e) {
-                        // If responseText is not JSON, use the generic error
-                        errorMsg += ' ' + error;
+                    } catch (parseError) {
+                        errorMsg += ' Server response: ' + xhr.responseText.substring(0, 100); // Show part of non-JSON response
                     }
                     displayAjaxMessage(errorMsg, 'danger');
-                    fetchReservations(currentPage); // Refresh even on error to show original state
+                    fetchReservations(currentPage); 
                 }
             });
         }
@@ -329,28 +350,24 @@ function initializeReservationsLogic() {
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>`;
         
-        $('#ajaxMessages').append(alertHtml);
+        $('#ajaxMessages').html(alertHtml); // Replace previous message
         
-        // Auto-dismiss
         setTimeout(function() {
             $('#' + messageId).fadeOut(500, function() { $(this).remove(); });
-        }, 5000); // Message disappears after 5 seconds
+        }, 5000); 
     }
 
     // Initial load
     fetchReservations();
 }
 
-// Wait for the DOM to be fully loaded, then check for jQuery, then initialize
 document.addEventListener('DOMContentLoaded', function() {
     let jqueryCheckInterval = setInterval(function() {
         if (window.jQuery) {
             clearInterval(jqueryCheckInterval);
-            // Now that jQuery is loaded, execute the main function by calling $(document).ready()
-            // which will in turn call our initializeReservationsLogic function.
             $(document).ready(initializeReservationsLogic);
         }
-    }, 100); // Check every 100ms
+    }, 100); 
 });
 </script>
 

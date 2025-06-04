@@ -48,8 +48,10 @@ if (empty($segments)) {
     }
 } else {
     // At least one segment (controller specified)
-    $controllerName = $segments[0] . 'Controller'; 
-    $actionName = !empty($segments[1]) ? $segments[1] : 'index'; // Preserve original case
+    // Ensure the first letter of the segment is capitalized for the controller name.
+    $controllerName = ucfirst($segments[0]) . 'Controller'; 
+    
+    $actionName = !empty($segments[1]) ? $segments[1] : 'index'; // Preserve original case for action
 
     // Collect remaining segments as parameters
     if (count($segments) > 2) {
@@ -65,9 +67,7 @@ error_log("Router attempting to load controller file: '{$controllerFile}'");
 
 if (file_exists($controllerFile)) {
     error_log("Controller file '{$controllerFile}' exists.");
-    // Note: Autoloader should have handled require_once if class_exists is to work reliably
-    // but an explicit require here can help ensure it's loaded if autoloader has issues.
-    // require_once $controllerFile; // Consider adding this if class_exists fails unexpectedly.
+    // require_once $controllerFile; // Autoloader should handle this. Explicit require can be a fallback.
 
     if (class_exists($controllerName)) {
         error_log("Class '{$controllerName}' exists.");
@@ -76,11 +76,9 @@ if (file_exists($controllerFile)) {
         $resolvedActionName = '';
         $actionExists = false;
 
-        // Log all available methods in the controller for debugging
         $availableMethods = get_class_methods($controller);
         error_log("Methods available in '{$controllerName}': " . implode(', ', $availableMethods));
 
-        // Try finding the method with original casing, then common variations
         error_log("Checking for method '{$actionName}' (original case)...");
         if (method_exists($controller, $actionName)) {
             $resolvedActionName = $actionName;
@@ -95,7 +93,6 @@ if (file_exists($controllerFile)) {
                 error_log("Found method '{$resolvedActionName}' with lowercase.");
             } else {
                 error_log("Method '{$lowercaseActionName}' (lowercase) also NOT found.");
-                // You can add more fallback checks here if needed (e.g., camelCase from snake_case)
             }
         }
 
@@ -118,7 +115,7 @@ if (file_exists($controllerFile)) {
     }
 } else {
     error_log("Controller file not found: '{$controllerFile}'. Requested Path: '{$requestPath}'");
-    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') {
+    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') { // Ensure AuthController itself isn't caught here if file is missing
         redirect('auth/login');
     } else {
         header("HTTP/1.0 404 Not Found");

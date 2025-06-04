@@ -60,10 +60,6 @@ class DashboardController {
         // Get start and end dates from FullCalendar's request (usually in ISO8601 format)
         $startDateStr = $_GET['start'] ?? null;
         $endDateStr = $_GET['end'] ?? null;
-
-        // Basic validation for date strings (you might want more robust validation)
-        // FullCalendar sends dates like '2023-05-01T00:00:00-07:00' or '2023-05-01'
-        // For database queries, we typically need 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DD'
         
         $viewStartDate = null;
         $viewEndDate = null;
@@ -72,32 +68,36 @@ class DashboardController {
             try {
                 $viewStartDate = new DateTime($startDateStr);
             } catch (Exception $e) {
-                error_log("Invalid start date from FullCalendar: " . $startDateStr);
-                $viewStartDate = null; // Or handle error appropriately
+                error_log("Invalid start date from FullCalendar: " . $startDateStr . " Error: " . $e->getMessage());
+                $viewStartDate = null; 
             }
         }
         if ($endDateStr) {
              try {
                 $viewEndDate = new DateTime($endDateStr);
             } catch (Exception $e) {
-                error_log("Invalid end date from FullCalendar: " . $endDateStr);
-                $viewEndDate = null; // Or handle error appropriately
+                error_log("Invalid end date from FullCalendar: " . $endDateStr . " Error: " . $e->getMessage());
+                $viewEndDate = null; 
             }
         }
 
+        $reservations = []; // Initialize reservations array
+
         // Fetch reservations within the date range
-        // The ReservationModel will need a method like getReservationsInDateRange
         if ($viewStartDate && $viewEndDate) {
+            // *** FIXED: Added 'reservation' as the first parameter for object_type ***
             $reservations = $this->reservationModel->getReservationsInDateRange(
+                'reservation', // Specify the object type for room reservations
                 $viewStartDate->format('Y-m-d H:i:s'), 
                 $viewEndDate->format('Y-m-d H:i:s'),
                 ['pending', 'approved'] // Statuses to fetch
             );
         } else {
             // Fallback if no date range is provided (though FullCalendar usually provides it)
-            // Or, you might choose to return an error or an empty set.
-            error_log("FullCalendar did not provide start/end dates. Fetching all relevant reservations.");
-            $reservations = $this->reservationModel->getAllReservations(
+            error_log("FullCalendar did not provide start/end dates. Fetching all relevant reservations of type 'reservation'.");
+            // This call correctly defaults to 'reservation' type in ReservationModel's getAllReservationsOfType
+            $reservations = $this->reservationModel->getAllReservationsOfType(
+                'reservation', // Explicitly state 'reservation' type
                 ['o.object_status' => ['pending', 'approved']] 
             );
         }
@@ -128,22 +128,32 @@ class DashboardController {
 
                 // Ensure start and end times are valid before adding to calendar
                 if (!empty($rawStartTime) && !empty($rawEndTime)) {
-                    $calendarEvents[] = [
-                        'title' => $roomName . ' (' . $userName . ')',
-                        'start' => $rawStartTime, 
-                        'end' => $rawEndTime,
-                        'color' => $color,
-                        'allDay' => false, // Assuming reservations are not all-day events
-                        'extendedProps' => [
-                            'reservation_id' => $res['object_id'], // Useful for eventClick
-                            'purpose' => $res['object_content'] ?? 'N/A',
-                            'status' => ucfirst($res['object_status']),
-                            'roomName' => $roomName,
-                            'userName' => $userName,
-                            'formattedStartTime' => format_datetime_for_display($rawStartTime),
-                            'formattedEndTime' => format_datetime_for_display($rawEndTime)
-                        ]
-                    ];
+                    try {
+                        // Validate date strings before using them
+                        new DateTime($rawStartTime);
+                        new DateTime($rawEndTime);
+
+                        $calendarEvents[] = [
+                            'title' => htmlspecialchars($roomName . ' (' . $userName . ')'), // Ensure HTML entities are encoded
+                            'start' => $rawStartTime, 
+                            'end' => $rawEndTime,
+                            'color' => $color,
+                            'allDay' => false, // Assuming reservations are not all-day events
+                            'extendedProps' => [
+                                'reservation_id' => $res['object_id'], 
+                                'purpose' => htmlspecialchars($res['object_content'] ?? 'N/A'),
+                                'status' => htmlspecialchars(ucfirst($res['object_status'])),
+                                'roomName' => htmlspecialchars($roomName),
+                                'userName' => htmlspecialchars($userName),
+                                'formattedStartTime' => format_datetime_for_display($rawStartTime),
+                                'formattedEndTime' => format_datetime_for_display($rawEndTime)
+                            ]
+                        ];
+                    } catch (Exception $e) {
+                        error_log("Invalid date format for reservation ID " . $res['object_id'] . ". Start: " . $rawStartTime . ", End: " . $rawEndTime . ". Error: " . $e->getMessage());
+                    }
+                } else {
+                     error_log("Missing start or end time for reservation ID " . $res['object_id']);
                 }
             }
         }
