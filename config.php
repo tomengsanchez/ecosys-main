@@ -182,7 +182,7 @@ define('CAPABILITIES', [
     'VIEW_REPORTS' => 'View Reports (Example)',
     
     // Open Office - Rooms (Physical Entities)
-    'MANAGE_ROOMS' => 'Manage All Aspects of Rooms (Legacy/Super)',
+    'MANAGE_ROOMS' => 'Manage All Aspects of Rooms (Legacy/Super)', // Kept for backward compatibility or super admin
     'VIEW_ROOMS'   => 'View Rooms List',
     'CREATE_ROOMS' => 'Create New Rooms',
     'EDIT_ROOMS'   => 'Edit Existing Rooms',
@@ -196,16 +196,6 @@ define('CAPABILITIES', [
     'APPROVE_DENY_ROOM_RESERVATIONS' => 'Approve/Deny Room Reservations', 
     'EDIT_ANY_ROOM_RESERVATION' => 'Edit Any Room Reservation', 
     'DELETE_ANY_ROOM_RESERVATION' => 'Delete Any Room Reservation Record', 
-
-    // Open Office - Vehicles
-    'VIEW_VEHICLES'   => 'View Vehicles List',
-    'CREATE_VEHICLES' => 'Create New Vehicles',
-    'EDIT_VEHICLES'   => 'Edit Existing Vehicles',
-    'DELETE_VEHICLES' => 'Delete Vehicles',
-    // Add more vehicle-related capabilities if needed (e.g., for reservations)
-    // 'CREATE_VEHICLE_RESERVATIONS' => 'Create Own Vehicle Reservations',
-    // 'VIEW_ALL_VEHICLE_RESERVATIONS' => 'View All Vehicle Reservations',
-    // 'APPROVE_DENY_VEHICLE_RESERVATIONS' => 'Approve/Deny Vehicle Reservations',
 
     // Other Modules (examples, can be expanded)
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',
@@ -250,6 +240,11 @@ function userHasCapability($capability) {
     }
     $userRole = $_SESSION['user_role'] ?? 'user'; 
 
+    // Super admin (e.g., role 'admin') bypasses specific checks if needed, or has all capabilities by default.
+    // This logic can be centralized here or handled by ensuring 'admin' role has all capabilities in DB.
+    // For now, we rely on the DB assignment.
+    // if ($userRole === 'admin') return true; // Example of a hardcoded super admin bypass
+
     if (!class_exists('RolePermissionModel')) {
         $modelPath = __DIR__ . '/app/models/RolePermissionModel.php';
         if (file_exists($modelPath)) require_once $modelPath;
@@ -263,7 +258,14 @@ function userHasCapability($capability) {
     
     if (class_exists('RolePermissionModel')) {
         $rolePermissionModel = new RolePermissionModel($pdo);
-        // Specific capability check
+        // Check for the specific capability OR the broader 'MANAGE_ROOMS' for room-related actions
+        // This provides a transition path if 'MANAGE_ROOMS' was previously used as a catch-all.
+        // For new granular checks, we primarily rely on the specific capability.
+        if (strpos($capability, '_ROOMS') !== false && $capability !== 'MANAGE_ROOMS') {
+             if ($rolePermissionModel->roleHasCapability($userRole, 'MANAGE_ROOMS')) {
+                return true; // If user has MANAGE_ROOMS, they have all granular room permissions.
+            }
+        }
         return $rolePermissionModel->roleHasCapability($userRole, $capability);
     }
     
