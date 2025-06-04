@@ -947,11 +947,10 @@ class OpenOfficeController {
         }
 
         $userId = $_SESSION['user_id'];
-        $myReservations = $this->reservationModel->getReservationsByUserId($userId, [
-            'orderby' => 'o.object_date', // Ensure alias if needed by BaseObjectModel
-            'orderdir' => 'DESC',
-            'include_meta' => true
-        ]);
+        $myReservations = $this->reservationModel->getReservationsByUserId(
+            $userId,
+            'ORDER BY o.object_date DESC' // Pass as string if that's what the model expects
+        );
         
         $data = [];
         if ($myReservations) {
