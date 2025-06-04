@@ -149,7 +149,6 @@ class OpenOfficeController {
                     'object_content' => $data['object_content'],
                     'object_status' => $data['object_status'], 
                     'meta_fields' => $data['meta_fields']
-                    // object_type ('room') will be set by RoomModel's createRoom method
                 ];
 
                 $roomId = $this->roomModel->createRoom($roomData); 
@@ -565,8 +564,8 @@ class OpenOfficeController {
                 }
                 if ($totalCreated > 0) {
                     $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)!";
-                    /* Handle failed messages */ redirect('OpenOffice/myreservations');
-                } else { $data['errors']['form_err'] = 'No reservation requests could be submitted.'; /* Add reasons */ $this->view('openoffice/reservation_form', $data); }
+                    redirect('OpenOffice/myreservations');
+                } else { $data['errors']['form_err'] = 'No reservation requests could be submitted.'; $this->view('openoffice/reservation_form', $data); }
             } else { $this->view('openoffice/reservation_form', $data); }
         } else {
             $data = array_merge($commonData, ['reservation_date' => date('Y-m-d'), 'reservation_time_slots' => [], 'reservation_purpose' => '', 'errors' => []]);
@@ -574,9 +573,6 @@ class OpenOfficeController {
         }
     }
 
-    /**
-     * AJAX endpoint to get queue information for multiple selected room time slots.
-     */
     public function getMultipleSlotsQueueInfo() {
         header('Content-Type: application/json');
         $input = json_decode(file_get_contents('php://input'), true);
@@ -609,7 +605,7 @@ class OpenOfficeController {
             }
             
             $conflictingPending = $this->reservationModel->getConflictingReservations(
-                $roomId, $startTimeStr, $endTimeStr, ['pending'], null, 'reservation' // object_type = 'reservation' for rooms
+                $roomId, $startTimeStr, $endTimeStr, ['pending'], null, 'reservation'
             );
             if ($conflictingPending === false) {
                 $pendingCounts[$slot] = ['error' => 'Could not retrieve queue information.'];
@@ -624,7 +620,6 @@ class OpenOfficeController {
     }
 
     public function myreservations() {
-        $userId = $_SESSION['user_id'];
         $data = [
             'pageTitle' => 'My Room Reservations',
             'breadcrumbs' => [['label' => 'Open Office', 'url' => 'OpenOffice/rooms'], ['label' => 'My Reservations']],
@@ -641,8 +636,6 @@ class OpenOfficeController {
             exit;
         }
         $userId = $_SESSION['user_id'];
-        $draw = intval($_GET['draw'] ?? $_POST['draw'] ?? 0); 
-
         $myReservations = $this->reservationModel->getReservationsByUserId(
             $userId, 'reservation', ['orderby' => 'o.object_date', 'orderdir' => 'DESC', 'include_meta' => true]
         );
@@ -650,10 +643,9 @@ class OpenOfficeController {
         $dataOutput = []; 
         if ($myReservations === false) { 
             error_log("ajaxGetUserReservations: Error fetching reservations for user ID {$userId}. Model returned false.");
-             echo json_encode(["draw" => $draw, "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Could not retrieve reservations."]);
+             echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Could not retrieve reservations."]);
             exit;
         }
-        // ... (data processing and actionsHtml logic remains the same)
         if ($myReservations) {
             foreach ($myReservations as $res) {
                 $roomName = 'N/A';
@@ -694,42 +686,148 @@ class OpenOfficeController {
                 ];
             }
         }
-
-        echo json_encode(["draw" => $draw, "recordsTotal" => count($dataOutput), "recordsFiltered" => count($dataOutput), "data" => $dataOutput]);
+        echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => count($dataOutput), "recordsFiltered" => count($dataOutput), "data" => $dataOutput]);
         exit;
     }
 
     public function cancelreservation($reservationId = null) {
-        // ... (ensure redirects use OpenOffice)
         if (!userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')) {
             $_SESSION['error_message'] = "You do not have permission to cancel reservations.";
             redirect('OpenOffice/myreservations');
         }
-        // ...
+        $reservationId = (int)$reservationId;
+        $reservation = $this->reservationModel->getObjectById($reservationId);
+
+        if (!$reservation || $reservation['object_type'] !== 'reservation' || $reservation['object_author'] != $_SESSION['user_id'] || $reservation['object_status'] !== 'pending') {
+            $_SESSION['error_message'] = 'Invalid request or reservation cannot be cancelled.';
+        } else {
+            if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
+                $_SESSION['message'] = 'Room reservation request cancelled successfully.';
+            } else {
+                $_SESSION['error_message'] = 'Could not cancel room reservation request.';
+            }
+        }
         redirect('OpenOffice/myreservations');
     }
     
     public function approvereservation($reservationId = null) {
-        // ... (ensure redirects use OpenOffice)
         if (!userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')) {
-            // ...
-            redirect('OpenOffice/roomreservations'); 
+            $this->handlePermissionErrorAjax(); return;
         }
-        // ...
+        $reservationId = (int)$reservationId;
+        $reservationToApprove = $this->reservationModel->getObjectById($reservationId);
+        $success = false; $message = 'Invalid request.';
+
+        if ($reservationToApprove && $reservationToApprove['object_type'] === 'reservation') {
+            if ($reservationToApprove['object_status'] === 'pending') {
+                $roomId = $reservationToApprove['object_parent'];
+                $startTime = $reservationToApprove['meta']['reservation_start_datetime'] ?? null;
+                $endTime = $reservationToApprove['meta']['reservation_end_datetime'] ?? null;
+
+                if ($startTime && $endTime) {
+                    $conflicts = $this->reservationModel->getConflictingReservations($roomId, $startTime, $endTime, ['approved'], $reservationId, 'reservation');
+                    if ($conflicts && count($conflicts) > 0) {
+                        $message = 'Error: Cannot approve. Conflicts with an existing approved room reservation.';
+                    } else {
+                        if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
+                            $success = true; $message = 'Room reservation approved successfully.';
+                        } else { $message = 'Could not approve room reservation due to a system error.'; }
+                    }
+                } else { $message = 'Error: Reservation is missing start or end time data.'; }
+            } else { $message = 'Only pending room reservations can be approved. This one is ' . $reservationToApprove['object_status'] . '.'; }
+        }
+        if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
+        $_SESSION[$success ? 'message' : 'error_message'] = $message;
         redirect('OpenOffice/roomreservations');
     }
 
     public function denyreservation($reservationId = null) {
-        // ... (ensure redirects use OpenOffice)
          if (!userHasCapability('APPROVE_DENY_ROOM_RESERVATIONS')) {
-            // ...
-            redirect('OpenOffice/roomreservations'); 
+            $this->handlePermissionErrorAjax(); return;
         }
-        // ...
+        $reservationId = (int)$reservationId;
+        $reservation = $this->reservationModel->getObjectById($reservationId);
+        $success = false; $message = 'Invalid request.';
+
+        if ($reservation && $reservation['object_type'] === 'reservation') {
+            if (in_array($reservation['object_status'], ['pending', 'approved'])) {
+                $originalStatus = $reservation['object_status'];
+                if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
+                    $success = true;
+                    $message = 'Room reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
+                } else { $message = 'Could not deny room reservation.'; }
+            } else { $message = 'Only pending or approved room reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
+        }
+        if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
+        $_SESSION[$success ? 'message' : 'error_message'] = $message;
         redirect('OpenOffice/roomreservations');
     }
+
+    public function deleteAnyReservation($reservationId = null) {
+        if (!userHasCapability('DELETE_ANY_ROOM_RESERVATION')) {
+            $this->handlePermissionErrorAjax(); return;
+        }
+        $reservationId = (int)$reservationId;
+        $reservation = $this->reservationModel->getObjectById($reservationId);
+        $success = false; $message = 'Invalid request.';
+
+        if ($reservation && $reservation['object_type'] === 'reservation') {
+            if ($this->reservationModel->deleteObject($reservationId)) { 
+                $success = true; $message = "Room reservation record ID {$reservationId} deleted successfully.";
+            } else { $message = "Could not delete room reservation record ID {$reservationId}."; }
+        } else { $message = "Room reservation record ID {$reservationId} not found or not a room reservation.";}
+        
+        if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
+        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        redirect('OpenOffice/roomreservations');
+    }
+
+    private function handlePermissionErrorAjax() {
+        if ($this->isAjaxRequest()) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Permission denied.']);
+            exit;
+        }
+        $_SESSION['error_message'] = "You do not have permission for this action.";
+        redirect('dashboard'); 
+    }
+
+    private function isAjaxRequest() {
+        return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+    }
     
-    // ... (isAjaxRequest, editMyReservation, editAnyReservation, deleteAnyReservation, mergeTimeSlots)
+    private function mergeTimeSlots(array $slots, string $date): array {
+        if (empty($slots)) return [];
+        usort($slots, function($a, $b) {
+            return strtotime(explode('-', $a)[0]) - strtotime(explode('-', $b)[0]);
+        });
+        $mergedRanges = []; $currentMerge = null;
+        foreach ($slots as $slot) {
+            $timeParts = explode('-', $slot);
+            if (count($timeParts) !== 2) continue;
+            $slotStart = trim($timeParts[0]); $slotEnd = trim($timeParts[1]);
+            $fullStartDateTimeStr = $date . ' ' . $slotStart . ':00';
+            $fullEndDateTimeStr = $date . ' ' . $slotEnd . ':00';
+            try {
+                $currentSlotStart = new DateTime($fullStartDateTimeStr);
+                $currentSlotEnd = new DateTime($fullEndDateTimeStr);
+            } catch (Exception $e) { continue; }
+            if ($currentMerge === null) {
+                $currentMerge = ['start' => $currentSlotStart, 'end' => $currentSlotEnd];
+            } else {
+                if ($currentSlotStart <= $currentMerge['end']) {
+                    if ($currentSlotEnd > $currentMerge['end']) $currentMerge['end'] = $currentSlotEnd;
+                } else {
+                    $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
+                    $currentMerge = ['start' => $currentSlotStart, 'end' => $currentSlotEnd];
+                }
+            }
+        }
+        if ($currentMerge !== null) {
+            $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
+        }
+        return $mergedRanges;
+    }
 
     protected function view($view, $data = []) {
         $viewFile = __DIR__ . '/../views/' . $view . '.php';
