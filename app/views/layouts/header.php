@@ -33,148 +33,123 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
 }
 
 // Navigation Configuration
-// Note: URLs should generally match the controller/method structure.
-// The router in index.php typically converts 'ControllerName/actionName' to 'ControllerNameController' and 'actionName'.
-// So, 'Openoffice/rooms' routes to OpenofficeController's rooms() method.
-// 'Vehicle/index' or just 'Vehicle' would route to VehicleController's index() method.
 $navigationConfig = [
     [
         'label' => 'Dashboard',
-        'url' => 'Dashboard', // Or just '' for the base dashboard
+        'url' => 'Dashboard', 
         'icon' => 'fas fa-tachometer-alt me-1',
     ],
     [
         'label' => 'Open Office',
         'icon' => 'fas fa-door-open me-1',
         'id' => 'openOfficeDropdown',
-        'base_path' => 'Openoffice', // Base path for highlighting the parent dropdown
+        'base_path' => 'OpenOffice', // MODIFIED: Changed to OpenOffice (uppercase O)
         'children' => [
             [
                 'label' => 'Manage Rooms',
-                'url' => 'Openoffice/rooms', 
+                'url' => 'OpenOffice/rooms', // MODIFIED: Changed to OpenOffice (uppercase O)
                 'capability' => 'VIEW_ROOMS'
             ],
             [
                 'label' => 'Room Reservations (Admin)',
-                'url' => 'Openoffice/roomreservations', 
+                'url' => 'OpenOffice/roomreservations', // MODIFIED: Changed to OpenOffice (uppercase O)
                 'capability' => 'VIEW_ALL_ROOM_RESERVATIONS'
             ],
             [
                 'label' => 'My Room Reservations',
-                'url' => 'Openoffice/myreservations', 
-                // No specific capability, all logged-in users can see their own
+                'url' => 'OpenOffice/myreservations', // MODIFIED: Changed to OpenOffice (uppercase O)
             ],
             [
-                'type' => 'divider' // Visual separator in dropdown
+                'type' => 'divider' 
             ],
             [
                 'label' => 'Manage Vehicles',
-                'url' => 'vehicle', // Routes to VehicleController's index() method
+                'url' => 'vehicle', 
                 'capability' => 'VIEW_VEHICLES'
             ],
-            // --- NEW: Vehicle Reservation Links ---
             [
                 'label' => 'Vehicle Reservations (Admin)',
-                'url' => 'VehicleRequest/index', // Points to the new VehicleRequestController
+                'url' => 'VehicleRequest/index', 
                 'capability' => 'VIEW_ALL_VEHICLE_RESERVATIONS'
             ],
             [
                 'label' => 'My Vehicle Reservations',
-                'url' => 'VehicleRequest/myrequests', // Points to the new VehicleRequestController
-                // No specific capability, all logged-in users can see their own
+                'url' => 'VehicleRequest/myrequests', 
             ],
-            // --- END NEW ---
         ]
     ],
     [
         'label' => 'IT Department',
         'icon' => 'fas fa-desktop me-1',
         'id' => 'itDepartmentDropdown',
-        'base_path' => 'It', 
-        'capability' => 'MANAGE_IT_REQUESTS', // Example capability
+        'base_path' => 'It', // Assuming ItController.php
+        'capability' => 'MANAGE_IT_REQUESTS', 
         'children' => [
             [
                 'label' => 'Requests',
-                'url' => 'It/requests', // Example URL
+                'url' => 'It/requests', 
             ],
-            // Add more IT department links here
         ]
     ],
     [
-        'label' => 'Rap', // Assuming this is another module
+        'label' => 'Rap', 
         'icon' => 'fas fa-calendar-alt me-1',
         'id' => 'rapDropdown',
-        'base_path' => 'Rap', 
-        'capability' => 'MANAGE_RAP_CALENDAR', // Example capability
+        'base_path' => 'Rap',  // Assuming RapController.php
+        'capability' => 'MANAGE_RAP_CALENDAR', 
         'children' => [
             [
                 'label' => 'Calendar Of Activities',
-                'url' => 'Rap/calendar', // Example URL
+                'url' => 'Rap/calendar', 
             ],
         ]
     ],
     [
-        'label' => 'SES', // Assuming this is another module
+        'label' => 'SES', 
         'icon' => 'fas fa-chart-bar me-1',
         'id' => 'sesDropdown',
-        'base_path' => 'Ses', 
-        'capability' => 'MANAGE_SES_DATA', // Example capability
+        'base_path' => 'Ses', // Assuming SesController.php
+        'capability' => 'MANAGE_SES_DATA', 
         'children' => [
             [
                 'label' => 'SES Data',
-                'url' => 'Ses/data', // Example URL
+                'url' => 'Ses/data', 
             ],
         ]
     ],
-    // Add other top-level navigation items or dropdowns here
 ];
 
 function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropdown = false) {
     $html = '';
-    $hasVisibleChild = false; // Track if any child item is visible for a dropdown
+    $hasVisibleChild = false; 
     foreach ($items as $item) {
-        // Check for capability first
         if (isset($item['capability']) && !userHasCapability($item['capability'])) {
-            continue; // Skip this item if user lacks capability
+            continue; 
         }
-
-        $itemVisible = true; // Assume visible unless children are all hidden
-
-        // If it's a dropdown, check if any of its children are visible
+        $itemVisible = true; 
         if (isset($item['children'])) {
             $childHtml = renderNavigationItems($item['children'], $currentPath, $basePathStripped, true);
-            if (empty(trim(strip_tags($childHtml)))) { // Check if rendered child HTML is effectively empty
-                 // If the parent dropdown itself doesn't have a capability requirement,
-                 // but all its children are hidden due to their own capabilities,
-                 // then hide the parent dropdown too.
+            if (empty(trim(strip_tags($childHtml)))) { 
                 if (!isset($item['capability'])) {
                     $itemVisible = false;
                 }
             }
             if ($itemVisible) $hasVisibleChild = true;
         } else {
-            // For non-dropdown items, visibility is already determined by its own capability check above
             if (isset($item['capability']) && !userHasCapability($item['capability'])) {
                  $itemVisible = false;
             }
             if ($itemVisible) $hasVisibleChild = true;
         }
-        
         if (!$itemVisible) {
-            continue; // Skip rendering this item if it's not visible
+            continue; 
         }
-
-
         if (isset($item['type']) && $item['type'] === 'divider') {
             $html .= '<li><hr class="dropdown-divider"></li>';
         } elseif (isset($item['children'])) {
-            // Re-render children only if the parent is visible
             $childContent = renderNavigationItems($item['children'], $currentPath, $basePathStripped, true);
-            if (!empty(trim(strip_tags($childContent)))) { // Ensure there's actual content
-                // Determine active state for dropdown based on its base_path or children's URLs
+            if (!empty(trim(strip_tags($childContent)))) { 
                 $dropdownActiveClass = '';
-                // Corrected: Check if $item['base_path'] is set before using it.
-                // Also, ensure the check for children's active state is robust.
                 if (isset($item['base_path']) && isDropdownSectionActive($item['base_path'], $currentPath, $basePathStripped)) {
                     $dropdownActiveClass = 'active';
                 } else { 
@@ -185,7 +160,6 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                         }
                     }
                 }
-
                 $html .= '<li class="nav-item dropdown">';
                 $html .= '<a class="nav-link dropdown-toggle ' . $dropdownActiveClass . '" href="#" id="' . htmlspecialchars($item['id']) . '" role="button" data-bs-toggle="dropdown" aria-expanded="false">';
                 if (isset($item['icon'])) { $html .= '<i class="' . htmlspecialchars($item['icon']) . '"></i>'; }
@@ -196,10 +170,9 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                 $html .= '</ul></li>';
                 if (!$isDropdown) $hasVisibleChild = true; 
             }
-        } else { // Regular link item
+        } else { 
             $activeClass = isActive($item['url'], $currentPath, $basePathStripped) ? 'active' : '';
             $itemClass = $isDropdown ? 'dropdown-item' : 'nav-link';
-            
             $html .= $isDropdown ? '<li>' : '<li class="nav-item">';
             $html .= '<a class="' . $itemClass . ' ' . $activeClass . '" href="' . BASE_URL . ltrim($item['url'], '/') . '">';
             if (isset($item['icon']) && !$isDropdown) { 
@@ -225,55 +198,48 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.14/index.global.min.js'></script>
     <style>
         body { 
-            padding-top: 70px; /* Adjust for fixed navbar height */
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Example font */
+            padding-top: 70px; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
         }
         .breadcrumb { 
-            background-color: #e9ecef; /* Lighter breadcrumb background */
+            background-color: #e9ecef; 
             padding: 0.75rem 1rem; 
             border-radius: 0.25rem; 
             margin-bottom: 1rem; 
         }
         .main-content { 
-            min-height: calc(100vh - 70px - 70px - 3rem); /* Navbar height - Footer height - some margin */
-            background-color: #fff; /* White background for content area */
+            min-height: calc(100vh - 70px - 70px - 3rem); 
+            background-color: #fff; 
             padding: 1.5rem;
             border-radius: 0.25rem;
-            /* box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.075); */ /* Optional subtle shadow */
         }
         footer { 
             line-height: 1; 
-            background-color: #343a40; /* Dark footer */
-            color: #f8f9fa; /* Light text for footer */
+            background-color: #343a40; 
+            color: #f8f9fa; 
         }
         .navbar-nav .dropdown-menu { 
-            min-width: 220px; /* Wider dropdown */
+            min-width: 220px; 
             border-radius: 0.25rem;
             box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
         }
         .navbar-brand img {
-            max-height: 30px; /* Adjust logo size if you add one */
+            max-height: 30px; 
             margin-right: 0.5rem;
         }
-        /* FullCalendar event text wrapping */
         .fc-event-main-frame { white-space: normal; overflow-wrap: break-word; display: block; }
         .fc-event-title { white-space: normal !important; overflow-wrap: break-word; display: block; padding: 2px 0; }
         .fc-daygrid-event { white-space: normal; overflow: visible !important; }
         .fc-daygrid-event .fc-event-main { overflow: visible; }
-        
-        /* DataTables styling adjustments */
         .dataTables_wrapper .dataTables_paginate .paginate_button { padding: 0.3em 0.8em; }
         .dataTables_length, .dataTables_filter { margin-bottom: 1em; }
-        .table th, .table td { vertical-align: middle; } /* Better alignment in table cells */
-
-        /* Card styling improvements */
+        .table th, .table td { vertical-align: middle; } 
         .card {
-            border: 1px solid rgba(0,0,0,.125); /* Standard border */
+            border: 1px solid rgba(0,0,0,.125); 
         }
         .card-header {
             font-weight: 500;
         }
-        /* Alert styling */
         .alert {
             border-radius: 0.25rem;
         }
@@ -299,7 +265,6 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                  <?php if (isLoggedIn()): ?>
                     <?php 
-                    // Admin dropdown - only show if user has ACCESS_ADMIN_PANEL capability
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
@@ -341,7 +306,7 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                                 <?php endif; ?>
                             </ul>
                         </li>
-                    <?php endif; // End ACCESS_ADMIN_PANEL check ?>
+                    <?php endif; ?>
 
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userProfileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -353,13 +318,13 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                             <li><a class="dropdown-item" href="<?php echo BASE_URL . 'auth/logout'; ?>"><i class="fas fa-sign-out-alt me-1"></i>Logout</a></li>
                         </ul>
                     </li>
-                <?php else: // Not logged in ?>
+                <?php else: ?>
                     <li class="nav-item">
                         <a class="nav-link <?php echo isActive('auth/login', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'auth/login'; ?>">
                             <i class="fas fa-sign-in-alt me-1"></i>Login
                         </a>
                     </li>
-                <?php endif; // End isLoggedIn check ?>
+                <?php endif; ?>
             </ul>
         </div>
     </div>
@@ -367,7 +332,6 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
 
 <div class="container mt-4 mb-5"> 
     <?php
-    // Generate breadcrumbs if $breadcrumbs variable is set and is an array
     if (isset($breadcrumbs) && is_array($breadcrumbs) && !empty($breadcrumbs)) {
         echo generateBreadcrumbs($breadcrumbs);
     }

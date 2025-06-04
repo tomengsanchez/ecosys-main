@@ -6,11 +6,11 @@
 // - $breadcrumbs (array)
 // - $errors (array) - Validation errors
 // - $reservation_date (string) - Submitted date (for repopulating form)
-// - $reservation_time_slot (string) - Submitted time slot
+// - $reservation_time_slots (array) - Submitted time slot array
 // - $reservation_purpose (string) - Submitted purpose
 // - $approved_reservations_data_for_js (array) - Raw PHP array of approved reservation start/end times
 
-$formAction = BASE_URL . 'Openoffice/createreservation/' . ($room['object_id'] ?? '');
+$formAction = BASE_URL . 'OpenOffice/createreservation/' . ($room['object_id'] ?? ''); // Ensure OpenOffice casing
 
 $baseTimeSlots = [];
 for ($hour = 8; $hour < 17; $hour++) { 
@@ -26,9 +26,19 @@ for ($hour = 8; $hour < 17; $hour++) {
 
 require_once __DIR__ . '/../layouts/header.php';
 
-$jsRoomId = $room['object_id'] ?? 0;
-echo "<script>const PHP_ROOM_ID = " . intval($jsRoomId) . ";</script>";
-echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>"; 
+// Define JavaScript constants from PHP variables
+// These will be outputted directly into a <script> tag by PHP before the main script block.
+$js_vars_to_define = [
+    'PHP_ROOM_ID' => intval($room['object_id'] ?? 0),
+    'APP_BASE_URL' => BASE_URL, // Use a more specific name
+    'AJAX_CONTROLLER_PATH' => 'OpenOffice/' // Specific to this view's AJAX calls
+];
+echo "<script>";
+foreach ($js_vars_to_define as $key => $value) {
+    // Ensure strings are properly quoted for JavaScript
+    echo "const " . $key . " = " . (is_string($value) ? "'" . addslashes($value) . "'" : $value) . ";\n";
+}
+echo "</script>";
 
 ?>
 
@@ -50,10 +60,10 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
                 <h5 class="mb-3">Reservation Details</h5>
 
                 <?php
+                // Error and session message display
                 if (!empty($errors['form_err'])) {
                     echo '<div class="alert alert-danger text-center">' . htmlspecialchars($errors['form_err']) . '</div>';
                 }
-                // Session messages display
                 if (isset($_SESSION['message'])) {
                     echo '<div class="alert alert-success alert-dismissible fade show" role="alert">' . 
                          htmlspecialchars($_SESSION['message']) . 
@@ -87,15 +97,17 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
                         <label class="form-label">Time Slots <span class="text-danger">*</span></label>
                         <div id="time_slots_container" class="row row-cols-2 row-cols-md-3 g-2">
                             <?php 
+                            $submittedTimeSlots = $reservation_time_slots ?? [];
                             foreach ($baseTimeSlots as $value => $display):
-                                $isChecked = (isset($reservation_time_slots) && in_array($value, $reservation_time_slots)) ? 'checked' : '';
+                                $isChecked = (is_array($submittedTimeSlots) && in_array($value, $submittedTimeSlots)) ? 'checked' : '';
+                                $checkboxId = "time_slot_" . htmlspecialchars(str_replace([':', '-'], '_', $value));
                             ?>
                                 <div class="col">
                                     <div class="form-check form-check-inline">
                                         <input class="form-check-input time-slot-checkbox" type="checkbox" 
-                                               name="reservation_time_slots[]" id="time_slot_<?php echo htmlspecialchars($value); ?>" 
+                                               name="reservation_time_slots[]" id="<?php echo $checkboxId; ?>" 
                                                value="<?php echo htmlspecialchars($value); ?>" <?php echo $isChecked; ?>>
-                                        <label class="form-check-label" for="time_slot_<?php echo htmlspecialchars($value); ?>">
+                                        <label class="form-check-label" for="<?php echo $checkboxId; ?>">
                                             <?php echo htmlspecialchars($display); ?>
                                         </label>
                                     </div>
@@ -125,7 +137,7 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
 
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg">Submit Reservation Request</button>
-                        <a href="<?php echo BASE_URL . 'Openoffice/rooms'; ?>" class="btn btn-secondary">Cancel</a>
+                        <a href="<?php echo BASE_URL . 'OpenOffice/rooms'; ?>" class="btn btn-secondary">Cancel</a>
                     </div>
                 </form>
             </div>
@@ -134,13 +146,20 @@ echo "<script>const BASE_AJAX_URL = '" . BASE_URL . "';</script>";
 </div>
 
 <script>
+// Note: PHP_ROOM_ID, APP_BASE_URL, and AJAX_CONTROLLER_PATH are now defined globally 
+// by the PHP echo block before this script tag.
+
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('reservation_date');
     const timeSlotCheckboxes = document.querySelectorAll('.time-slot-checkbox');
     const timeSlotsContainer = document.getElementById('time_slots_container');
     const queueInfoEl = document.getElementById('queueInfo');
-    const roomId = typeof PHP_ROOM_ID !== 'undefined' ? PHP_ROOM_ID : 0;
-    const ajaxBaseUrl = typeof BASE_AJAX_URL !== 'undefined' ? BASE_AJAX_URL : '/';
+    
+    // Use the globally defined constants from PHP
+    const roomId = (typeof PHP_ROOM_ID !== 'undefined') ? PHP_ROOM_ID : 0;
+    const appBaseUrl = (typeof APP_BASE_URL !== 'undefined') ? APP_BASE_URL : '/'; // Provide a fallback
+    const ajaxControllerPath = (typeof AJAX_CONTROLLER_PATH !== 'undefined') ? AJAX_CONTROLLER_PATH : 'OpenOffice/';
+
 
     const approvedReservations = <?php 
         echo json_encode(
@@ -149,8 +168,6 @@ document.addEventListener('DOMContentLoaded', function() {
         ); 
     ?>;
     
-    console.log('[DEBUG] Approved Reservations:', approvedReservations); // For debugging
-
     const baseTimeSlotData = Array.from(timeSlotCheckboxes).map(checkbox => ({
         value: checkbox.value,
         label: checkbox.nextElementSibling.textContent.trim(),
@@ -175,10 +192,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // For multiple slots, we might need a different API endpoint or a loop of calls.
-        // For now, let's just check the first selected slot as an example, or indicate multiple.
-        // A more robust solution would involve a single API call that takes an array of slots.
-        const url = `${ajaxBaseUrl}Openoffice/getMultipleSlotsQueueInfo`; // New endpoint
+        // Construct URL using the JS constants defined by PHP
+        const url = `${appBaseUrl}${ajaxControllerPath}getMultipleSlotsQueueInfo`; 
         
         try {
             const response = await fetch(url, {
@@ -187,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    roomId: roomId,
+                    roomId: roomId, 
                     date: selectedDate,
                     slots: selectedSlots
                 })
@@ -200,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (errorData && errorData.error) {
                         errorText = errorData.error;
                     }
-                } catch (e) { /* ignore */ }
+                } catch (e) { /* ignore if response is not JSON */ }
                 throw new Error(errorText);
             }
             const data = await response.json();
@@ -216,7 +231,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         const count = data.pendingCounts[slot];
                         totalPending += count;
                         if (count > 0) {
-                            infoMessages.push(`${baseTimeSlotData.find(d => d.value === slot).label}: ${count} pending request(s)`);
+                            const slotLabel = baseTimeSlotData.find(d => d.value === slot)?.label || slot;
+                            infoMessages.push(`${slotLabel}: ${count} pending request(s)`);
                         }
                     }
                 }
@@ -239,10 +255,9 @@ document.addEventListener('DOMContentLoaded', function() {
         queueInfoEl.textContent = ''; 
         const selectedDateStr = dateInput.value; 
         const now = new Date(); 
-        now.setHours(0,0,0,0); 
-
+        
         const todaysApprovedBookings = approvedReservations.filter(booking => {
-            return booking.start.substring(0, 10) === selectedDateStr;
+            return typeof booking.start === 'string' && booking.start.substring(0, 10) === selectedDateStr;
         });
 
         timeSlotCheckboxes.forEach(checkbox => {
@@ -272,13 +287,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const label = checkbox.nextElementSibling;
             if (isBooked) {
                 label.textContent = `${optData.label} (Booked)`;
-                checkbox.checked = false; // Uncheck if booked
+                checkbox.checked = false; 
             } else if (isPast) {
                 label.textContent = `${optData.label} (Past)`;
-                checkbox.checked = false; // Uncheck if past
+                checkbox.checked = false; 
             } else {
                 label.textContent = optData.label;
-                // Restore original checked state if not disabled, or keep unchecked if it was disabled before
                 checkbox.checked = optData.originalChecked && !checkbox.disabled;
             }
         });
@@ -293,12 +307,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    if (dateInput) {
-        dateInput.addEventListener('change', function() {
-            updateAvailableTimeSlots();
-        });
+    if (dateInput && timeSlotsContainer) {
+        dateInput.addEventListener('change', updateAvailableTimeSlots);
+        
         timeSlotsContainer.addEventListener('change', function(event) {
             if (event.target.classList.contains('time-slot-checkbox')) {
+                const changedOptData = baseTimeSlotData.find(d => d.value === event.target.value);
+                if (changedOptData) {
+                    changedOptData.originalChecked = event.target.checked;
+                }
+
                 const selectedSlots = Array.from(timeSlotCheckboxes)
                                         .filter(cb => cb.checked && !cb.disabled)
                                         .map(cb => cb.value);
