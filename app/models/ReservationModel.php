@@ -46,21 +46,19 @@ class ReservationModel extends BaseObjectModel {
                     FROM objects o
                     JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
                     JOIN objectmeta ome ON o.object_id = ome.object_id AND ome.meta_key = 'reservation_end_datetime'
-                    WHERE o.object_type = ? -- Use placeholder for object_type
+                    WHERE o.object_type = ? 
                       AND o.object_parent = ? 
                       AND o.object_status IN ({$statusPlaceholders})
-                      AND oms.meta_value < ? -- Existing reservation starts before new one ends
-                      AND ome.meta_value > ? "; //-- Existing reservation ends after new one starts
+                      AND oms.meta_value < ? 
+                      AND ome.meta_value > ? "; 
 
-            // Prepare parameters for the query
-            $params = [$objectType, $parentId]; // Add objectType and parentId first
+            $params = [$objectType, $parentId]; 
             foreach ($statuses as $status) {
-                $params[] = $status; // Add each status for the IN clause
+                $params[] = $status; 
             }
-            $params[] = $endTime;   // For oms.meta_value < :endTime
-            $params[] = $startTime; // For ome.meta_value > :startTime
+            $params[] = $endTime;   
+            $params[] = $startTime; 
 
-            // If an existing reservation ID is provided, exclude it from the conflict check
             if ($excludeReservationId !== null && is_numeric($excludeReservationId)) {
                 $sql .= " AND o.object_id != ? ";
                 $params[] = (int)$excludeReservationId;
@@ -69,13 +67,6 @@ class ReservationModel extends BaseObjectModel {
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
             $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Enrich with full meta if needed, though start/end are already selected
-            // if ($conflicts) {
-            //     foreach ($conflicts as $key => $conflict) {
-            //         $conflicts[$key]['meta'] = $this->getAllObjectMeta($conflict['object_id']);
-            //     }
-            // }
             
             return $conflicts;
 
@@ -95,7 +86,10 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false An array of reservation objects or false on failure.
      */
     public function getAllReservationsOfType($reservationObjectType, array $conditions = [], array $args = []) {
-        // The getObjectsByConditions method from BaseObjectModel takes object_type as the first parameter.
+        if (empty($reservationObjectType)) {
+            error_log("ReservationModel::getAllReservationsOfType called with empty reservationObjectType.");
+            return false;
+        }
         return $this->getObjectsByConditions($reservationObjectType, $conditions, $args);
     }
 
@@ -108,7 +102,11 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false
      */
     public function getReservationsByUserId($userId, $reservationObjectType = 'reservation', array $args = []) {
-        $conditions = ['o.object_author' => $userId]; // Assuming 'o.' alias is used in BaseObjectModel
+        if (empty($reservationObjectType)) {
+            error_log("ReservationModel::getReservationsByUserId called with empty reservationObjectType for user ID {$userId}.");
+            return false;
+        }
+        $conditions = ['o.object_author' => $userId]; 
         return $this->getAllReservationsOfType($reservationObjectType, $conditions, $args);
     }
 
@@ -122,7 +120,11 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false
      */
     public function getReservationsByParentId($parentId, $reservationObjectType = 'reservation', array $conditions = [], array $args = []) {
-        $conditions['o.object_parent'] = $parentId; // Assuming 'o.' alias
+        if (empty($reservationObjectType)) {
+            error_log("ReservationModel::getReservationsByParentId called with empty reservationObjectType for parent ID {$parentId}.");
+            return false;
+        }
+        $conditions['o.object_parent'] = $parentId; 
         return $this->getAllReservationsOfType($reservationObjectType, $conditions, $args);
     }
     
@@ -137,6 +139,11 @@ class ReservationModel extends BaseObjectModel {
      * @return array|false An array of reservation objects or false on failure.
      */
     public function getReservationsInDateRange($reservationObjectType, $rangeStartDateTime, $rangeEndDateTime, array $statuses = ['pending', 'approved'], array $args = []) {
+        // ** ADDED: Check if reservationObjectType is provided **
+        if (empty($reservationObjectType)) {
+            error_log("ReservationModel::getReservationsInDateRange called with empty reservationObjectType.");
+            return false; // Or handle as appropriate, e.g., throw an exception
+        }
         try {
             $sql = "SELECT o.* FROM objects o
                     INNER JOIN objectmeta oms ON o.object_id = oms.object_id AND oms.meta_key = 'reservation_start_datetime'
@@ -155,16 +162,19 @@ class ReservationModel extends BaseObjectModel {
                 $sql .= " AND o.object_status IN (" . implode(',', $statusPlaceholders) . ")";
             }
 
+            // Ensure the date range query is inclusive of events that START within the range,
+            // or END within the range, or SPAN the entire range, or are CONTAINED within the range.
+            // The condition (ExistingStart < RangeEnd) AND (ExistingEnd > RangeStart) covers all overlaps.
             $sql .= " AND oms.meta_value < :rangeEndDateTime 
                       AND ome.meta_value > :rangeStartDateTime";
             $params[':rangeStartDateTime'] = $rangeStartDateTime;
             $params[':rangeEndDateTime'] = $rangeEndDateTime;
             
-            $orderBy = $args['orderby'] ?? 'o.object_date';
-            $orderDir = strtoupper($args['orderdir'] ?? 'DESC');
-            $allowedOrderBy = ['o.object_id', 'o.object_title', 'o.object_date', 'o.object_status', 'oms.meta_value'];
-            if (!in_array(strtolower($orderBy), array_map('strtolower', $allowedOrderBy))) $orderBy = 'o.object_date';
-            if (!in_array($orderDir, ['ASC', 'DESC'])) $orderDir = 'DESC';
+            $orderBy = $args['orderby'] ?? 'oms.meta_value'; // Default order by reservation start time
+            $orderDir = strtoupper($args['orderdir'] ?? 'ASC'); // Default to ascending for chronological order
+            $allowedOrderBy = ['o.object_id', 'o.object_title', 'o.object_date', 'o.object_status', 'oms.meta_value', 'ome.meta_value'];
+            if (!in_array(strtolower($orderBy), array_map('strtolower', $allowedOrderBy))) $orderBy = 'oms.meta_value';
+            if (!in_array($orderDir, ['ASC', 'DESC'])) $orderDir = 'ASC';
             $sql .= " ORDER BY {$orderBy} {$orderDir}";
 
             if (isset($args['limit']) && is_numeric($args['limit'])) {
@@ -178,6 +188,11 @@ class ReservationModel extends BaseObjectModel {
 
             if ($objects && ($args['include_meta'] ?? true)) {
                 foreach ($objects as $key => $object) {
+                    // We already selected reservation_start_datetime and reservation_end_datetime
+                    // If other meta fields are needed, fetch them here.
+                    // For performance, if only start/end are needed for the calendar,
+                    // this full getAllObjectMeta might be overkill.
+                    // However, the current DashboardController uses it for 'purpose' etc.
                     $objects[$key]['meta'] = $this->getAllObjectMeta($object['object_id']);
                 }
             }
@@ -189,10 +204,7 @@ class ReservationModel extends BaseObjectModel {
         }
     }
 
-    // Renamed original getReservationsByRoomId to getReservationsByParentId for clarity
-    // If you still need a specific getReservationsByRoomId, it can call getReservationsByParentId
     public function getReservationsByRoomId($roomId, array $conditions = [], array $args = []) {
-        // Assuming 'reservation' is the object_type for rooms
         return $this->getReservationsByParentId($roomId, 'reservation', $conditions, $args);
     }
 }
