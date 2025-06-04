@@ -61,6 +61,20 @@ INSERT IGNORE INTO `role_permissions` (`role_name`, `capability_key`) VALUES
 ('admin', 'APPROVE_DENY_ROOM_RESERVATIONS'),
 ('admin', 'EDIT_ANY_ROOM_RESERVATION'),
 ('admin', 'DELETE_ANY_ROOM_RESERVATION'),
+-- Vehicle Management Capabilities for Admin (already there or add if missing)
+('admin', 'VIEW_VEHICLES'),
+('admin', 'CREATE_VEHICLES'),
+('admin', 'EDIT_VEHICLES'),
+('admin', 'DELETE_VEHICLES'),
+-- NEW Vehicle Reservation Capabilities for Admin
+('admin', 'CREATE_VEHICLE_RESERVATIONS'),
+('admin', 'EDIT_OWN_VEHICLE_RESERVATIONS'),
+('admin', 'CANCEL_OWN_VEHICLE_RESERVATIONS'),
+('admin', 'VIEW_ALL_VEHICLE_RESERVATIONS'),
+('admin', 'APPROVE_DENY_VEHICLE_RESERVATIONS'),
+('admin', 'EDIT_ANY_VEHICLE_RESERVATION'),
+('admin', 'DELETE_ANY_VEHICLE_RESERVATION'),
+-- End NEW Vehicle Reservation Capabilities for Admin
 ('admin', 'MANAGE_IT_REQUESTS'),
 ('admin', 'MANAGE_RAP_CALENDAR'),
 ('admin', 'MANAGE_SES_DATA'),
@@ -71,7 +85,12 @@ INSERT IGNORE INTO `role_permissions` (`role_name`, `capability_key`) VALUES
 INSERT IGNORE INTO `role_permissions` (`role_name`, `capability_key`) VALUES
 ('user', 'CREATE_ROOM_RESERVATIONS'),  -- Can create their own reservations
 ('user', 'CANCEL_OWN_ROOM_RESERVATIONS'), -- Can cancel their own pending reservations
-('user', 'VIEW_ROOMS'); -- So they can see rooms to book
+('user', 'VIEW_ROOMS'), -- So they can see rooms to book
+-- NEW Vehicle Reservation Capabilities for User
+('user', 'VIEW_VEHICLES'), -- So they can see vehicles to book/request
+('user', 'CREATE_VEHICLE_RESERVATIONS'),
+('user', 'CANCEL_OWN_VEHICLE_RESERVATIONS');
+-- End NEW Vehicle Reservation Capabilities for User
 
 -- Editor Role Permissions (example - adjust as needed)
 INSERT IGNORE INTO `role_permissions` (`role_name`, `capability_key`) VALUES
@@ -128,4 +147,3 @@ INSERT INTO `objectmeta` (`object_id`, `meta_key`, `meta_value`) VALUES
 
 
 SELECT 'Installation data script completed.' AS Status;
-

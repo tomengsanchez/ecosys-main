@@ -202,10 +202,16 @@ define('CAPABILITIES', [
     'CREATE_VEHICLES' => 'Create New Vehicles',
     'EDIT_VEHICLES'   => 'Edit Existing Vehicles',
     'DELETE_VEHICLES' => 'Delete Vehicles',
-    // Add more vehicle-related capabilities if needed (e.g., for reservations)
-    // 'CREATE_VEHICLE_RESERVATIONS' => 'Create Own Vehicle Reservations',
-    // 'VIEW_ALL_VEHICLE_RESERVATIONS' => 'View All Vehicle Reservations',
-    // 'APPROVE_DENY_VEHICLE_RESERVATIONS' => 'Approve/Deny Vehicle Reservations',
+    
+    // --- NEW: Vehicle Reservation Capabilities ---
+    'CREATE_VEHICLE_RESERVATIONS' => 'Create Own Vehicle Reservations',
+    'EDIT_OWN_VEHICLE_RESERVATIONS' => 'Edit Own Pending Vehicle Reservations', 
+    'CANCEL_OWN_VEHICLE_RESERVATIONS' => 'Cancel Own Pending Vehicle Reservations',
+    'VIEW_ALL_VEHICLE_RESERVATIONS' => 'View All Vehicle Reservations', 
+    'APPROVE_DENY_VEHICLE_RESERVATIONS' => 'Approve/Deny Vehicle Reservations', 
+    'EDIT_ANY_VEHICLE_RESERVATION' => 'Edit Any Vehicle Reservation', 
+    'DELETE_ANY_VEHICLE_RESERVATION' => 'Delete Any Vehicle Reservation Record', 
+    // --- END NEW ---
 
     // Other Modules (examples, can be expanded)
     'MANAGE_IT_REQUESTS' => 'Manage IT Requests',

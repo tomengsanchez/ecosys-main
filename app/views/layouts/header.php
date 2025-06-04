@@ -72,12 +72,18 @@ $navigationConfig = [
                 'url' => 'vehicle', // Routes to VehicleController's index() method
                 'capability' => 'VIEW_VEHICLES'
             ],
-            // Placeholder for Vehicle Reservations if added later
-            // [
-            //     'label' => 'Vehicle Reservations',
-            //     'url' => 'Vehicle/reservations', // Example
-            //     'capability' => 'VIEW_ALL_VEHICLE_RESERVATIONS' // Example capability
-            // ],
+            // --- NEW: Vehicle Reservation Links ---
+            [
+                'label' => 'Vehicle Reservations (Admin)',
+                'url' => 'VehicleRequest/index', // Points to the new VehicleRequestController
+                'capability' => 'VIEW_ALL_VEHICLE_RESERVATIONS'
+            ],
+            [
+                'label' => 'My Vehicle Reservations',
+                'url' => 'VehicleRequest/myrequests', // Points to the new VehicleRequestController
+                // No specific capability, all logged-in users can see their own
+            ],
+            // --- END NEW ---
         ]
     ],
     [
@@ -167,9 +173,11 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
             if (!empty(trim(strip_tags($childContent)))) { // Ensure there's actual content
                 // Determine active state for dropdown based on its base_path or children's URLs
                 $dropdownActiveClass = '';
+                // Corrected: Check if $item['base_path'] is set before using it.
+                // Also, ensure the check for children's active state is robust.
                 if (isset($item['base_path']) && isDropdownSectionActive($item['base_path'], $currentPath, $basePathStripped)) {
                     $dropdownActiveClass = 'active';
-                } else { // Fallback: check if any child is active
+                } else { 
                     foreach ($item['children'] as $child) {
                         if (isset($child['url']) && isActive($child['url'], $currentPath, $basePathStripped)) {
                             $dropdownActiveClass = 'active';
@@ -186,7 +194,7 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                 $html .= '<ul class="dropdown-menu" aria-labelledby="' . htmlspecialchars($item['id']) . '">';
                 $html .= $childContent;
                 $html .= '</ul></li>';
-                if (!$isDropdown) $hasVisibleChild = true; // Mark that a top-level item was rendered
+                if (!$isDropdown) $hasVisibleChild = true; 
             }
         } else { // Regular link item
             $activeClass = isActive($item['url'], $currentPath, $basePathStripped) ? 'active' : '';
@@ -194,16 +202,14 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
             
             $html .= $isDropdown ? '<li>' : '<li class="nav-item">';
             $html .= '<a class="' . $itemClass . ' ' . $activeClass . '" href="' . BASE_URL . ltrim($item['url'], '/') . '">';
-            if (isset($item['icon']) && !$isDropdown) { // Only show icon for top-level nav-links
+            if (isset($item['icon']) && !$isDropdown) { 
                 $html .= '<i class="' . htmlspecialchars($item['icon']) . '"></i>';
             }
             $html .= htmlspecialchars($item['label']);
             $html .= '</a></li>';
-            if (!$isDropdown) $hasVisibleChild = true; // Mark that a top-level item was rendered
+            if (!$isDropdown) $hasVisibleChild = true; 
         }
     }
-    // For a top-level call, return HTML only if there was something visible.
-    // For recursive calls (isDropdown=true), always return the generated HTML for children.
     return $isDropdown ? $html : ($hasVisibleChild ? $html : '');
 }
 ?>
@@ -367,4 +373,3 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
     }
     ?>
     <div class="main-content">
-        
