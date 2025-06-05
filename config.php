@@ -346,6 +346,7 @@ define('CAPABILITIES', [
     'MANAGE_DEPARTMENTS' => 'Manage Departments',
     'MANAGE_SITE_SETTINGS' => 'Manage Site Settings',
     'VIEW_REPORTS' => 'View Reports (Example)',
+     'VIEW_SYSTEM_INFO' => 'View System Information Page',
     
     // Open Office - Rooms (Physical Entities)
     'MANAGE_ROOMS' => 'Manage All Aspects of Rooms (Legacy/Super)',

@@ -317,7 +317,7 @@ if (defined('SYSTEM_DEBUG_MONITOR_ENABLED') && SYSTEM_DEBUG_MONITOR_ENABLED === 
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('admin', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('admin', $currentPath, $basePathStripped) || isDropdownSectionActive('SystemInfo', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-user-shield me-1"></i>Admin
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminDropdown">
@@ -328,7 +328,9 @@ if (defined('SYSTEM_DEBUG_MONITOR_ENABLED') && SYSTEM_DEBUG_MONITOR_ENABLED === 
                                                                     !isDropdownSectionActive('admin/roleAccessSettings', $currentPath, $basePathStripped) &&
                                                                     !isDropdownSectionActive('admin/listRoles', $currentPath, $basePathStripped) && 
                                                                     !isDropdownSectionActive('admin/dtr', $currentPath, $basePathStripped) && 
-                                                                    !isDropdownSectionActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
+                                                                    !isDropdownSectionActive('admin/assets', $currentPath, $basePathStripped) &&
+                                                                    !isDropdownSectionActive('SystemInfo', $currentPath, $basePathStripped) /* Exclude SystemInfo from highlighting Admin Dashboard */
+                                                                    ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
                                 <?php if (userHasCapability('MANAGE_USERS')): ?>
                                     <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
                                 <?php endif; ?>
@@ -344,6 +346,11 @@ if (defined('SYSTEM_DEBUG_MONITOR_ENABLED') && SYSTEM_DEBUG_MONITOR_ENABLED === 
                                 <?php if (userHasCapability('MANAGE_SITE_SETTINGS')): ?>
                                     <li><a class="dropdown-item <?php echo isActive('admin/siteSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/siteSettings'; ?>">Site Settings</a></li>
                                 <?php endif; ?>
+                                <?php if (userHasCapability('VIEW_SYSTEM_INFO')): ?>
+                                     <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item <?php echo isActive('SystemInfo', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'SystemInfo'; ?>">System Information</a></li>
+                                <?php endif; ?>
+
                                 <?php if (userHasCapability('MANAGE_DTR') || userHasCapability('MANAGE_ASSETS')): ?>
                                     <li><hr class="dropdown-divider"></li>
                                 <?php endif; ?>
