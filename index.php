@@ -59,70 +59,53 @@ if (empty($segments)) {
     }
 }
 
-error_log("Router determined: Controller='{$controllerName}', Action='{$actionName}' from Segments: " . implode('/', $segments));
-
 // --- Controller Instantiation and Action Execution ---
 $controllerFile = __DIR__ . '/app/controllers/' . $controllerName . '.php';
-error_log("Router attempting to load controller file: '{$controllerFile}'");
 
 if (file_exists($controllerFile)) {
-    error_log("Controller file '{$controllerFile}' exists.");
-    // require_once $controllerFile; // Autoloader should handle this. Explicit require can be a fallback.
+    // Autoloader should handle the require_once for $controllerFile
 
     if (class_exists($controllerName)) {
-        error_log("Class '{$controllerName}' exists.");
         $controller = new $controllerName($pdo); 
         
         $resolvedActionName = '';
         $actionExists = false;
 
-        $availableMethods = get_class_methods($controller);
-        error_log("Methods available in '{$controllerName}': " . implode(', ', $availableMethods));
-
-        error_log("Checking for method '{$actionName}' (original case)...");
+        // Check for method with original case and then lowercase
         if (method_exists($controller, $actionName)) {
             $resolvedActionName = $actionName;
             $actionExists = true;
-            error_log("Found method '{$resolvedActionName}' with original case.");
         } else {
-            error_log("Method '{$actionName}' (original case) NOT found. Checking lowercase...");
             $lowercaseActionName = strtolower($actionName);
             if (method_exists($controller, $lowercaseActionName)) { 
                 $resolvedActionName = $lowercaseActionName;
                 $actionExists = true;
-                error_log("Found method '{$resolvedActionName}' with lowercase.");
-            } else {
-                error_log("Method '{$lowercaseActionName}' (lowercase) also NOT found.");
             }
         }
 
         if ($actionExists) {
-            error_log("Dispatching to '{$controllerName}->{$resolvedActionName}'.");
             call_user_func_array([$controller, $resolvedActionName], $params);
         } else {
-            error_log("Action '{$actionName}' (and variants) not found in controller '{$controllerName}'.");
+            error_log("Action '{$actionName}' (and variants) not found in controller '{$controllerName}'. Requested Path: '{$requestPath}'");
             header("HTTP/1.0 404 Not Found");
             echo "<h1>404 Not Found</h1><p>The page you requested could not be found (action method missing).</p>";
-            echo "<p>Controller: {$controllerName}, Attempted Action: {$actionName}</p>";
-            echo "<p>Please check server error logs for more details.</p>";
+            // Optionally, load a dedicated 404 view
+            // include __DIR__ . '/app/views/errors/404.php';
         }
     } else {
-        error_log("Controller class '{$controllerName}' NOT found in file '{$controllerFile}' after checking existence.");
+        error_log("Controller class '{$controllerName}' NOT found in file '{$controllerFile}' after checking existence. Requested Path: '{$requestPath}'");
         header("HTTP/1.0 404 Not Found");
         echo "<h1>404 Not Found</h1><p>The page you requested could not be found (controller class missing).</p>";
-        echo "<p>Controller: {$controllerName}</p>";
-        echo "<p>Please check server error logs for more details.</p>";
+        // Optionally, load a dedicated 404 view
     }
 } else {
     error_log("Controller file not found: '{$controllerFile}'. Requested Path: '{$requestPath}'");
-    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') { // Ensure AuthController itself isn't caught here if file is missing
+    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') {
         redirect('auth/login');
     } else {
         header("HTTP/1.0 404 Not Found");
         echo "<h1>404 Not Found</h1><p>The page you requested could not be found (controller file missing).</p>";
-        echo "<p>Requested Path: {$requestPath}</p>";
-        echo "<p>Attempted Controller File: {$controllerFile}</p>";
-        echo "<p>Please check server error logs for more details.</p>";
+        // Optionally, load a dedicated 404 view
     }
 }
 
