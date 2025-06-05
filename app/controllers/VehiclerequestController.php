@@ -278,7 +278,8 @@ class VehicleRequestController {
         $input = json_decode(file_get_contents('php://input'), true);
 
         $vehicleId = filter_var($input['vehicleId'] ?? $input['roomId'] ?? null, FILTER_VALIDATE_INT);
-        $date = filter_var($input['date'] ?? null, FILTER_SANITIZE_STRING);
+        // Replace FILTER_SANITIZE_STRING with FILTER_SANITIZE_FULL_SPECIAL_CHARS
+        $date = filter_var($input['date'] ?? null, FILTER_SANITIZE_FULL_SPECIAL_CHARS); 
         $slots = $input['slots'] ?? []; 
 
         if (!$vehicleId || !$date || !is_array($slots) || empty($slots)) {

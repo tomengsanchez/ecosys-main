@@ -466,6 +466,11 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
             redirect('admin');
         }
+        // Define SITE_DEBUG_MODE_OPTION_KEY and DEFAULT_SITE_DEBUG_MODE in config.php
+        // Ensure they are defined before this controller action might be called.
+        $debugModeOptionKey = defined('SITE_DEBUG_MODE_OPTION_KEY') ? SITE_DEBUG_MODE_OPTION_KEY : 'site_debug_mode';
+        $defaultDebugMode = defined('DEFAULT_SITE_DEBUG_MODE') ? DEFAULT_SITE_DEBUG_MODE : 'off';
+
         $manageableOptions = [
             'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
             'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
@@ -473,6 +478,7 @@ class AdminController {
             'items_per_page' => ['label' => 'Items Per Page', 'default' => 10, 'type' => 'number', 'help' => 'Number of items to show on paginated lists.'],
             'site_description' => ['label' => 'Site Description', 'default' => '', 'type' => 'textarea'],
             'maintenance_mode' => ['label' => 'Maintenance Mode', 'default' => 'off', 'type' => 'select', 'options' => ['on' => 'On', 'off' => 'Off']],
+            $debugModeOptionKey => ['label' => 'Enable System Debug Monitor', 'default' => $defaultDebugMode, 'type' => 'select', 'options' => ['on' => 'On', 'off' => 'Off'], 'help' => 'Shows a debug monitor at the top of all pages with system information.'],
             'site_time_format' => [ 
                 'label' => 'Site Time Format', 'default' => DEFAULT_TIME_FORMAT, 'type' => 'select',
                 'options' => [ 

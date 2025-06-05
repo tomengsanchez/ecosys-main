@@ -18,6 +18,16 @@ define('MAINTENANCE_MODE_ENABLED', false); // Set to true to enable maintenance 
  */
 define('SITE_NAME_BASIC', 'Mainsystem'); // Change this to your site's default name if needed
 
+// --- Debug Mode Setting ---
+/**
+ * Option key for storing the debug mode setting in the database (options table).
+ */
+define('SITE_DEBUG_MODE_OPTION_KEY', 'site_debug_mode');
+/**
+ * Default value for the site debug mode if not found in the database. 'on' or 'off'.
+ */
+define('DEFAULT_SITE_DEBUG_MODE', 'off');
+
 
 // --- PHPMailer ---
 // Make sure you have run 'composer install' in your project root.
