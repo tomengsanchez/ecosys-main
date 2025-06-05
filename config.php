@@ -4,6 +4,21 @@
  * Database Configuration, Session Management, Role/Capability, Email Definitions, and PHPMailer Setup
  */
 
+// --- Maintenance Mode Switch ---
+/**
+ * Enable or disable maintenance mode.
+ * If true, the site will display the maintenance_page.php.
+ * IMPORTANT: Set to 'false' for normal operation.
+ */
+define('MAINTENANCE_MODE_ENABLED', false); // Set to true to enable maintenance mode
+
+/**
+ * Basic site name for use when the database (and OptionModel) might be unavailable,
+ * e.g., on the maintenance page.
+ */
+define('SITE_NAME_BASIC', 'Mainsystem'); // Change this to your site's default name if needed
+
+
 // --- PHPMailer ---
 // Make sure you have run 'composer install' in your project root.
 // This will create a 'vendor' directory with PHPMailer.
@@ -86,18 +101,34 @@ define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for de
 // define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for detailed logs during development
 
 $pdo = null; 
-$dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, 
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       
-    PDO::ATTR_EMULATE_PREPARES   => false,                  
-];
-try {
-    $pdo = new PDO($dsn, DB_USER, DB_PASSWORD, $options);
-} catch (\PDOException $e) {
-    error_log("Database Connection Error: " . $e->getMessage());
-    die("Could not connect to the database. Please check your configuration. Error: " . $e->getMessage());
+// Check for maintenance mode *before* attempting database connection
+if (defined('MAINTENANCE_MODE_ENABLED') && MAINTENANCE_MODE_ENABLED === true) {
+    // If maintenance mode is on, $pdo remains null.
+    // The maintenance page should not rely on $pdo.
+} else {
+    // Attempt database connection only if not in maintenance mode
+    $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+    $options = [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, 
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       
+        PDO::ATTR_EMULATE_PREPARES   => false,                  
+    ];
+    try {
+        $pdo = new PDO($dsn, DB_USER, DB_PASSWORD, $options);
+    } catch (\PDOException $e) {
+        // If DB connection fails AND we are NOT in explicit maintenance mode,
+        // this is a critical error. The die() message below will be shown.
+        // The maintenance_page.php will *not* be shown by index.php in this specific scenario
+        // unless index.php also handles the $pdo being null.
+        // For a cleaner maintenance display during DB outages, index.php's early check is better.
+        error_log("Database Connection Error: " . $e->getMessage());
+        // It's often better to let index.php handle showing a generic error or the maintenance page
+        // if $pdo is null after this block, rather than die() here.
+        // For now, keeping the original die() for immediate feedback on DB config issues.
+        die("Could not connect to the database. Please check your configuration. Error: " . $e->getMessage());
+    }
 }
+
 
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
@@ -143,6 +174,13 @@ function get_site_time_format() {
     static $siteTimeFormat = null;
 
     if ($siteTimeFormat !== null) {
+        return $siteTimeFormat;
+    }
+    
+    // If $pdo is null (e.g., maintenance mode or DB connection failed early),
+    // OptionModel cannot be used. Return default.
+    if ($pdo === null) {
+        $siteTimeFormat = DEFAULT_TIME_FORMAT;
         return $siteTimeFormat;
     }
 
@@ -196,44 +234,56 @@ function format_datetime_for_display($datetimeString, $customFormat = null) {
 function send_system_email($to, $subject, $message, $isHtml = false, $attachments = [], $ccAddresses = [], $bccAddresses = []) {
     global $pdo; // For OptionModel
 
-    if (!class_exists('OptionModel')) {
-        $modelPath = __DIR__ . '/app/models/OptionModel.php';
-        if (file_exists($modelPath)) require_once $modelPath;
-        else { 
-            error_log("OptionModel class not found in send_system_email(). Email not sent.");
-            return false;
-        }
-    }
-    $optionModel = new OptionModel($pdo);
+    // If $pdo is null (e.g., maintenance mode or DB connection failed early),
+    // OptionModel cannot be used for site_name or notification settings.
+    // We'll use defaults defined in config.php.
+    $siteName = SITE_NAME_BASIC; // Use basic site name
+    $notificationsEnabled = DEFAULT_EMAIL_NOTIFICATIONS_ENABLED;
 
-    $notificationsEnabled = $optionModel->getOption('site_email_notifications_enabled', DEFAULT_EMAIL_NOTIFICATIONS_ENABLED);
+    if ($pdo !== null) { // Try to use OptionModel if DB is available
+        if (!class_exists('OptionModel')) {
+            $modelPath = __DIR__ . '/app/models/OptionModel.php';
+            if (file_exists($modelPath)) require_once $modelPath;
+            else { 
+                error_log("OptionModel class not found in send_system_email(). Email not sent.");
+                return false;
+            }
+        }
+        $optionModel = new OptionModel($pdo);
+        $dbNotificationsEnabled = $optionModel->getOption('site_email_notifications_enabled');
+        if ($dbNotificationsEnabled !== null) $notificationsEnabled = $dbNotificationsEnabled;
+        
+        $dbSiteName = $optionModel->getOption('site_name');
+        if ($dbSiteName) $siteName = $dbSiteName;
+    }
+
+
     if (strtolower($notificationsEnabled) !== 'on') {
         error_log("Email notifications are disabled. Email to {$to} with subject '{$subject}' not sent.");
         return false; 
     }
 
-    $siteName = $optionModel->getOption('site_name', 'Mainsystem'); 
-    // Use defined constants for SMTP credentials, fallback to DB options if needed (though constants are simpler here)
-    $fromEmail = SMTP_USERNAME; // The SMTP username is typically the "From" email
-    $fromName = $siteName; // Use site name as the "From" name
+    // Use defined constants for SMTP credentials
+    $fromEmail = SMTP_USERNAME; 
+    $fromName = $siteName; 
 
-    $mail = new PHPMailer(true); // Passing `true` enables exceptions
+    $mail = new PHPMailer(true); 
 
     try {
         // Server settings
-        $mail->SMTPDebug = SMTP_DEBUG_LEVEL;          // Enable verbose debug output (set to SMTP::DEBUG_OFF for production)
-        $mail->isSMTP();                              // Send using SMTP
-        $mail->Host       = SMTP_HOST;                // Set the SMTP server to send through
-        $mail->SMTPAuth   = SMTP_AUTH;                // Enable SMTP authentication
-        $mail->Username   = SMTP_USERNAME;            // SMTP username (your Gmail address)
-        $mail->Password   = SMTP_PASSWORD;            // SMTP password (your Gmail App Password)
-        $mail->SMTPSecure = SMTP_SECURE;              // Enable implicit TLS/SSL encryption
-        $mail->Port       = SMTP_PORT;                // TCP port to connect to
+        $mail->SMTPDebug = SMTP_DEBUG_LEVEL;          
+        $mail->isSMTP();                              
+        $mail->Host       = SMTP_HOST;                
+        $mail->SMTPAuth   = SMTP_AUTH;                
+        $mail->Username   = SMTP_USERNAME;            
+        $mail->Password   = SMTP_PASSWORD;            
+        $mail->SMTPSecure = SMTP_SECURE;              
+        $mail->Port       = SMTP_PORT;                
 
         // Recipients
         $mail->setFrom($fromEmail, $fromName);
-        $mail->addAddress($to); // Add a recipient (name is optional)
-        // $mail->addReplyTo('info@example.com', 'Information'); // Optional
+        $mail->addAddress($to); 
+        // $mail->addReplyTo('info@example.com', 'Information'); 
 
         // CC and BCC
         if (!empty($ccAddresses)) {
@@ -251,7 +301,7 @@ function send_system_email($to, $subject, $message, $isHtml = false, $attachment
         if (!empty($attachments)) {
             foreach ($attachments as $attachmentPath) {
                 if (file_exists($attachmentPath)) {
-                    $mail->addAttachment($attachmentPath); // Add attachments
+                    $mail->addAttachment($attachmentPath); 
                 } else {
                     error_log("PHPMailer: Attachment file not found - {$attachmentPath}");
                 }
@@ -259,11 +309,11 @@ function send_system_email($to, $subject, $message, $isHtml = false, $attachment
         }
 
         // Content
-        $mail->isHTML($isHtml); // Set email format to HTML or plain text
-        $mail->Subject = "[{$siteName}] " . $subject; // Prepend site name to subject
+        $mail->isHTML($isHtml); 
+        $mail->Subject = "[{$siteName}] " . $subject; 
         $mail->Body    = $message;
         if (!$isHtml) {
-            $mail->AltBody = strip_tags($message); // For non-HTML mail clients, strip tags
+            $mail->AltBody = strip_tags($message); 
         }
 
         $mail->send();
@@ -334,6 +384,14 @@ function getDefinedRoles() {
     if ($rolesCache !== null) {
         return $rolesCache;
     }
+    
+    // If $pdo is null (e.g., maintenance mode), RoleModel cannot be used.
+    if ($pdo === null) {
+        // Fallback: Define essential roles if DB is not accessible.
+        // This is a basic fallback and might not cover all dynamically added roles.
+        $rolesCache = ['admin' => 'Administrator', 'user' => 'User']; // Basic fallback
+        return $rolesCache;
+    }
 
     if (!class_exists('RoleModel')) {
         $modelPath = __DIR__ . '/app/models/RoleModel.php';
@@ -361,6 +419,18 @@ function userHasCapability($capability) {
         return false;
     }
     $userRole = $_SESSION['user_role'] ?? 'user'; 
+
+    // If $pdo is null (e.g., maintenance mode), RolePermissionModel cannot be used.
+    // In this scenario, capability checks might be limited.
+    // For maintenance mode, it's often assumed only admins might bypass (via IP check, etc., not implemented here).
+    // Regular users would be blocked by the maintenance page itself.
+    if ($pdo === null) {
+        // Extremely basic check for 'admin' in maintenance mode.
+        // This isn't a secure bypass for general use.
+        if ($userRole === 'admin' && $capability === 'ACCESS_ADMIN_PANEL') return true; 
+        return false; 
+    }
+
 
     if (!class_exists('RolePermissionModel')) {
         $modelPath = __DIR__ . '/app/models/RolePermissionModel.php';
