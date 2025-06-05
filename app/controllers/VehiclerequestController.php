@@ -153,7 +153,7 @@ class VehicleRequestController {
             if (empty($data['errors']) && !empty($mergedReservationRanges)) {
                 $totalCreated = 0;
                 $failedReservations = [];
-                $reservedSlotsDisplay = [];
+                $successfulRequestDetailsForEmail = []; // For email notification
 
                 foreach ($mergedReservationRanges as $mergedRange) {
                     $fullStartDateTimeStr = $mergedRange['start'];
@@ -188,19 +188,60 @@ class VehicleRequestController {
 
                     if ($reservationId) {
                         $totalCreated++;
-                        $reservedSlotsDisplay[] = $mergedRange['slot_display'];
-                        // TODO: Implement email notifications for vehicle requests
-                        // $user = $this->userModel->findUserById($_SESSION['user_id']);
-                        // $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
-                        // if ($user && !empty($user['user_email'])) { send_system_email(...); }
-                        // if ($adminEmail) { send_system_email(...); }
+                        $successfulRequestDetailsForEmail[] = [
+                            'vehicle_name' => $vehicle['object_title'],
+                            'start_time_str' => $fullStartDateTimeStr, // Raw for formatting
+                            'end_time_str' => $fullEndDateTimeStr,     // Raw for formatting
+                            'purpose' => $data['reservation_purpose'],
+                            'destination' => $data['destination'],
+                            'request_id' => $reservationId
+                        ];
                     } else {
                         $failedReservations[] = ['slot' => $mergedRange['slot_display'], 'reason' => 'Failed to save to database.'];
                     }
                 }
 
                 if ($totalCreated > 0) {
-                    $_SESSION['message'] = "Successfully submitted {$totalCreated} vehicle reservation request(s)! They are now pending approval.";
+                    // Send email notifications
+                    $user = $this->userModel->findUserById($_SESSION['user_id']);
+                    $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
+                    $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
+
+                    if ($user && !empty($user['user_email'])) {
+                        $userSubject = "Vehicle Reservation Request Submitted - {$siteName}";
+                        $userMessage = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                        $userMessage .= "<p>Your vehicle reservation request(s) have been successfully submitted and are pending approval. Below are the details:</p>";
+                        
+                        foreach($successfulRequestDetailsForEmail as $detail) {
+                            $userMessage .= "<div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd;'>";
+                            $userMessage .= "<strong>Vehicle:</strong> " . htmlspecialchars($detail['vehicle_name']) . "<br>";
+                            $userMessage .= "<strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($detail['start_time_str'])) . " to " . htmlspecialchars(format_datetime_for_display($detail['end_time_str'])) . "<br>";
+                            $userMessage .= "<strong>Destination:</strong> " . htmlspecialchars($detail['destination']) . "<br>";
+                            $userMessage .= "<strong>Purpose:</strong> " . nl2br(htmlspecialchars($detail['purpose'])) . "<br>";
+                            $userMessage .= "<strong>Request ID:</strong> " . $detail['request_id'] . "<br>";
+                            $userMessage .= "</div>";
+                        }
+                        $userMessage .= "<p>You will be notified once your request(s) have been reviewed.</p><p>Thank you,<br>The {$siteName} Team</p>";
+                        send_system_email($user['user_email'], $userSubject, $userMessage, true);
+                    }
+
+                    if ($adminEmail) {
+                        $adminSubject = "New Vehicle Reservation Request Pending - {$siteName}";
+                        $adminMessage = "<p>A new vehicle reservation request(s) has been submitted by <strong>" . htmlspecialchars($user['display_name'] ?? 'N/A') . " (ID: " . $_SESSION['user_id'] . ")</strong> and requires your approval:</p>";
+                         foreach($successfulRequestDetailsForEmail as $detail) {
+                            $adminMessage .= "<div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd;'>";
+                            $adminMessage .= "<strong>Vehicle:</strong> " . htmlspecialchars($detail['vehicle_name']) . "<br>";
+                            $adminMessage .= "<strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($detail['start_time_str'])) . " to " . htmlspecialchars(format_datetime_for_display($detail['end_time_str'])) . "<br>";
+                            $adminMessage .= "<strong>Destination:</strong> " . htmlspecialchars($detail['destination']) . "<br>";
+                            $adminMessage .= "<strong>Purpose:</strong> " . nl2br(htmlspecialchars($detail['purpose'])) . "<br>";
+                            $adminMessage .= "<strong>Request ID:</strong> " . $detail['request_id'] . "<br>";
+                            $adminMessage .= "</div>";
+                        }
+                        $adminMessage .= "<p>Please log in to the admin panel to review this request: <a href='" . BASE_URL . "VehicleRequest/index" . "'>" . BASE_URL . "VehicleRequest/index</a></p>";
+                        send_system_email($adminEmail, $adminSubject, $adminMessage, true);
+                    }
+
+                    $_SESSION['message'] = "Successfully submitted {$totalCreated} vehicle reservation request(s)! They are now pending approval. You will receive an email confirmation.";
                     if (!empty($failedReservations)) {
                         $_SESSION['error_message'] = "Some merged slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
                     }
@@ -231,14 +272,11 @@ class VehicleRequestController {
 
     /**
      * AJAX endpoint to get queue information for multiple selected vehicle time slots.
-     * THIS IS THE METHOD THAT WAS MISSING OR MISMATCHED.
      */
     public function getMultipleSlotsQueueInfo() {
         header('Content-Type: application/json');
         $input = json_decode(file_get_contents('php://input'), true);
 
-        // Use 'vehicleId' from JS if sent, otherwise keep 'roomId' for consistency if JS wasn't updated
-        // It's better if JS sends 'vehicleId' for this controller.
         $vehicleId = filter_var($input['vehicleId'] ?? $input['roomId'] ?? null, FILTER_VALIDATE_INT);
         $date = filter_var($input['date'] ?? null, FILTER_SANITIZE_STRING);
         $slots = $input['slots'] ?? []; 
@@ -271,12 +309,11 @@ class VehicleRequestController {
                 continue;
             }
             
-            // Use 'vehicle_reservation' as the object type
             $conflictingPending = $this->reservationModel->getConflictingReservations(
                 $vehicleId, $startTimeStr, $endTimeStr, ['pending'], null, 'vehicle_reservation'
             );
 
-            if ($conflictingPending === false) { // Check for actual false, not just empty array
+            if ($conflictingPending === false) { 
                 $pendingCounts[$slot] = ['error' => 'Could not retrieve queue information for vehicle.'];
                  error_log("[VehicleRequestController::getMultipleSlotsQueueInfo] getConflictingReservations returned false for slot: {$slot}");
             } else {
@@ -408,13 +445,32 @@ class VehicleRequestController {
         }
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if (!$reservation || $reservation['object_type'] !== 'vehicle_reservation' || $reservation['object_author'] != $_SESSION['user_id'] || $reservation['object_status'] !== 'pending') {
             $_SESSION['error_message'] = 'Invalid request or reservation cannot be cancelled.';
         } else {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
                 $_SESSION['message'] = 'Vehicle reservation request cancelled successfully.';
-                // TODO: Email notifications if needed
+                
+                $user = $this->userModel->findUserById($reservation['object_author']);
+                $vehicle = $this->vehicleModel->getVehicleById($reservation['object_parent']);
+
+                if ($user && !empty($user['user_email']) && $vehicle) {
+                    $subject = "Vehicle Reservation Cancelled - {$siteName}";
+                    $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                    $body .= "<p>Your reservation for the vehicle '<strong>" . htmlspecialchars($vehicle['object_title']) . "</strong>' scheduled from " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')) . " to " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')) . " has been <strong>cancelled by you</strong>.</p>";
+                    $body .= "<p><strong>Details:</strong></p>";
+                    $body .= "<ul>";
+                    $body .= "<li><strong>Vehicle:</strong> " . htmlspecialchars($vehicle['object_title']) . "</li>";
+                    $body .= "<li><strong>Destination:</strong> " . htmlspecialchars($reservation['meta']['vehicle_destination'] ?? 'N/A') . "</li>";
+                    $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')) . "</li>";
+                    $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                    $body .= "</ul>";
+                    $body .= "<p>If this was a mistake, please contact an administrator or create a new reservation.</p>";
+                    $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                    send_system_email($user['user_email'], $subject, $body, true);
+                }
             } else {
                 $_SESSION['error_message'] = 'Could not cancel vehicle reservation request.';
             }
@@ -429,6 +485,7 @@ class VehicleRequestController {
         $reservationId = (int)$reservationId;
         $reservationToApprove = $this->reservationModel->getObjectById($reservationId);
         $success = false; $message = 'Invalid request.';
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if ($reservationToApprove && $reservationToApprove['object_type'] === 'vehicle_reservation') {
             if ($reservationToApprove['object_status'] === 'pending') {
@@ -443,7 +500,25 @@ class VehicleRequestController {
                     } else {
                         if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                             $success = true; $message = 'Vehicle reservation approved successfully.';
-                            // TODO: Email user & deny conflicting pending requests
+                            
+                            $user = $this->userModel->findUserById($reservationToApprove['object_author']);
+                            $vehicle = $this->vehicleModel->getVehicleById($vehicleId);
+
+                            if ($user && !empty($user['user_email']) && $vehicle) {
+                                $subject = "Vehicle Reservation Approved - {$siteName}";
+                                $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                                $body .= "<p>Your reservation request for the vehicle '<strong>" . htmlspecialchars($vehicle['object_title']) . "</strong>' has been <strong>approved</strong>.</p>";
+                                $body .= "<p><strong>Reservation Details:</strong></p>";
+                                $body .= "<ul>";
+                                $body .= "<li><strong>Vehicle:</strong> " . htmlspecialchars($vehicle['object_title']) . "</li>";
+                                $body .= "<li><strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($startTime)) . " to " . htmlspecialchars(format_datetime_for_display($endTime)) . "</li>";
+                                $body .= "<li><strong>Destination:</strong> " . htmlspecialchars($reservationToApprove['meta']['vehicle_destination'] ?? 'N/A') . "</li>";
+                                $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservationToApprove['object_content'] ?? 'N/A')) . "</li>";
+                                $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                                $body .= "</ul>";
+                                $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                                send_system_email($user['user_email'], $subject, $body, true);
+                            }
                         } else { $message = 'Could not approve vehicle reservation due to a system error.'; }
                     }
                 } else { $message = 'Error: Reservation is missing start or end time data.'; }
@@ -461,6 +536,7 @@ class VehicleRequestController {
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
         $success = false; $message = 'Invalid request.';
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if ($reservation && $reservation['object_type'] === 'vehicle_reservation') {
             if (in_array($reservation['object_status'], ['pending', 'approved'])) {
@@ -468,7 +544,27 @@ class VehicleRequestController {
                 if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
                     $success = true;
                     $message = 'Vehicle reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
-                    // TODO: Email user
+                    
+                    $user = $this->userModel->findUserById($reservation['object_author']);
+                    $vehicle = $this->vehicleModel->getVehicleById($reservation['object_parent']);
+
+                    if ($user && !empty($user['user_email']) && $vehicle) {
+                        $subject = "Vehicle Reservation Denied - {$siteName}";
+                        $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                        $body .= "<p>We regret to inform you that your reservation request for the vehicle '<strong>" . htmlspecialchars($vehicle['object_title']) . "</strong>' from " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')) . " to " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')) . " has been <strong>denied</strong>.</p>";
+                        $body .= "<p><strong>Details of Denied Request:</strong></p>";
+                        $body .= "<ul>";
+                        $body .= "<li><strong>Vehicle:</strong> " . htmlspecialchars($vehicle['object_title']) . "</li>";
+                        $body .= "<li><strong>Destination:</strong> " . htmlspecialchars($reservation['meta']['vehicle_destination'] ?? 'N/A') . "</li>";
+                        $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')) . "</li>";
+                        $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                        $body .= "</ul>";
+                        // Optionally, add a reason for denial if your system supports it
+                        // $body .= "<p><strong>Reason for denial:</strong> [Admin should provide this if applicable]</p>";
+                        $body .= "<p>If you have any questions, please contact the administrator.</p>";
+                        $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                        send_system_email($user['user_email'], $subject, $body, true);
+                    }
                 } else { $message = 'Could not deny vehicle reservation.'; }
             } else { $message = 'Only pending or approved vehicle reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
         }
@@ -486,7 +582,7 @@ class VehicleRequestController {
         $success = false; $message = 'Invalid request.';
 
         if ($reservation && $reservation['object_type'] === 'vehicle_reservation') {
-            if ($this->reservationModel->deleteObject($reservationId)) { // Uses BaseObjectModel's deleteObject
+            if ($this->reservationModel->deleteObject($reservationId)) { 
                 $success = true; $message = "Vehicle reservation record ID {$reservationId} deleted successfully.";
             } else { $message = "Could not delete vehicle reservation record ID {$reservationId}."; }
         } else { $message = "Vehicle reservation record ID {$reservationId} not found or not a vehicle reservation.";}

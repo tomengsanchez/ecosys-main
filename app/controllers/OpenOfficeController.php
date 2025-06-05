@@ -436,14 +436,14 @@ class OpenOfficeController {
                     if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                         $success = true; $message = 'Reservation approved successfully.';
                         // Email user and deny overlapping pending logic
-                        // ...
+                        // ... (This logic was moved to approvereservation method)
                     } else { $message = 'Could not approve reservation due to a system error.'; }
                 }
             }
         } elseif ($status === 'denied') {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
                 $success = true; $message = 'Reservation denied successfully.';
-                // ... (email logic) ...
+                // ... (email logic moved to denyreservation method) ...
             } else { $message = 'Could not deny reservation.';}
         }
         echo json_encode(['success' => $success, 'message' => $message]);
@@ -536,7 +536,6 @@ class OpenOfficeController {
             $formData = ['reservation_date' => $reservationDate, 'reservation_time_slots' => $reservationTimeSlots, 'reservation_purpose' => $reservationPurpose, 'errors' => []];
             $data = array_merge($commonData, $formData);
 
-            // Validation
             if (empty($data['reservation_date'])) $data['errors']['date_err'] = 'Reservation date is required.';
             elseif (new DateTime($data['reservation_date']) < new DateTime(date('Y-m-d'))) $data['errors']['date_err'] = 'Reservation date cannot be in the past.';
             if (empty($data['reservation_time_slots'])) $data['errors']['time_slot_err'] = 'At least one time slot is required.';
@@ -551,7 +550,8 @@ class OpenOfficeController {
             if (empty($data['errors']) && !empty($mergedReservationRanges)) {
                 $totalCreated = 0; 
                 $failedReservations = []; 
-                $successfulReservationDetailsForEmail = []; // Store details for email
+                $successfulReservationDetailsForEmail = []; 
+                $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
                 foreach ($mergedReservationRanges as $mergedRange) {
                     $fullStartDateTimeStr = $mergedRange['start']; 
@@ -569,7 +569,7 @@ class OpenOfficeController {
                         'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
                         'object_type' => 'reservation', 
                         'object_parent' => $roomId, 
-                        'object_status' => 'pending', // All new reservations are pending
+                        'object_status' => 'pending', 
                         'object_content' => $data['reservation_purpose'],
                         'meta_fields' => [
                             'reservation_start_datetime' => $fullStartDateTimeStr, 
@@ -581,11 +581,10 @@ class OpenOfficeController {
 
                     if ($reservationId) { 
                         $totalCreated++; 
-                        // Store details for the combined email
                         $successfulReservationDetailsForEmail[] = [
                             'room_name' => $room['object_title'],
-                            'start_time' => format_datetime_for_display($fullStartDateTimeStr),
-                            'end_time' => format_datetime_for_display($fullEndDateTimeStr),
+                            'start_time_str' => $fullStartDateTimeStr,
+                            'end_time_str' => $fullEndDateTimeStr,
                             'purpose' => $data['reservation_purpose'],
                             'reservation_id' => $reservationId
                         ];
@@ -595,36 +594,38 @@ class OpenOfficeController {
                 }
 
                 if ($totalCreated > 0) {
-                    // Send notifications
                     $user = $this->userModel->findUserById($_SESSION['user_id']);
-                    $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS); // Get admin email
+                    $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS);
 
                     if ($user && !empty($user['user_email'])) {
-                        $userSubject = "Room Reservation Request Submitted";
-                        $userMessage = "Dear " . htmlspecialchars($user['display_name']) . ",\n\n";
-                        $userMessage .= "Your room reservation request(s) have been successfully submitted and are pending approval:\n\n";
+                        $userSubject = "Room Reservation Request Submitted - {$siteName}";
+                        $userMessage = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                        $userMessage .= "<p>Your room reservation request(s) have been successfully submitted and are pending approval. Below are the details:</p>";
                         foreach($successfulReservationDetailsForEmail as $detail) {
-                            $userMessage .= "Room: " . htmlspecialchars($detail['room_name']) . "\n";
-                            $userMessage .= "Time: " . htmlspecialchars($detail['start_time']) . " to " . htmlspecialchars($detail['end_time']) . "\n";
-                            $userMessage .= "Purpose: " . htmlspecialchars($detail['purpose']) . "\n";
-                            $userMessage .= "Request ID: " . $detail['reservation_id'] . "\n\n";
+                            $userMessage .= "<div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd;'>";
+                            $userMessage .= "<strong>Room:</strong> " . htmlspecialchars($detail['room_name']) . "<br>";
+                            $userMessage .= "<strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($detail['start_time_str'])) . " to " . htmlspecialchars(format_datetime_for_display($detail['end_time_str'])) . "<br>";
+                            $userMessage .= "<strong>Purpose:</strong> " . nl2br(htmlspecialchars($detail['purpose'])) . "<br>";
+                            $userMessage .= "<strong>Request ID:</strong> " . $detail['reservation_id'] . "<br>";
+                            $userMessage .= "</div>";
                         }
-                        $userMessage .= "You will be notified once your request(s) have been reviewed.\n\nThank you.";
-                        send_system_email($user['user_email'], $userSubject, $userMessage);
+                        $userMessage .= "<p>You will be notified once your request(s) have been reviewed.</p><p>Thank you,<br>The {$siteName} Team</p>";
+                        send_system_email($user['user_email'], $userSubject, $userMessage, true);
                     }
 
                     if ($adminEmail) {
-                        $adminSubject = "New Room Reservation Request Pending Approval";
-                        $adminMessage = "A new room reservation request(s) has been submitted and requires your approval:\n\n";
-                        $adminMessage .= "User: " . htmlspecialchars($user['display_name'] ?? 'N/A') . " (ID: " . $_SESSION['user_id'] . ")\n\n";
+                        $adminSubject = "New Room Reservation Request Pending - {$siteName}";
+                        $adminMessage = "<p>A new room reservation request(s) has been submitted by <strong>" . htmlspecialchars($user['display_name'] ?? 'N/A') . " (ID: " . $_SESSION['user_id'] . ")</strong> and requires your approval:</p>";
                         foreach($successfulReservationDetailsForEmail as $detail) {
-                            $adminMessage .= "Room: " . htmlspecialchars($detail['room_name']) . "\n";
-                            $adminMessage .= "Time: " . htmlspecialchars($detail['start_time']) . " to " . htmlspecialchars($detail['end_time']) . "\n";
-                            $adminMessage .= "Purpose: " . htmlspecialchars($detail['purpose']) . "\n";
-                            $adminMessage .= "Request ID: " . $detail['reservation_id'] . "\n\n";
+                            $adminMessage .= "<div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd;'>";
+                            $adminMessage .= "<strong>Room:</strong> " . htmlspecialchars($detail['room_name']) . "<br>";
+                            $adminMessage .= "<strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($detail['start_time_str'])) . " to " . htmlspecialchars(format_datetime_for_display($detail['end_time_str'])) . "<br>";
+                            $adminMessage .= "<strong>Purpose:</strong> " . nl2br(htmlspecialchars($detail['purpose'])) . "<br>";
+                            $adminMessage .= "<strong>Request ID:</strong> " . $detail['reservation_id'] . "<br>";
+                            $adminMessage .= "</div>";
                         }
-                        $adminMessage .= "Please log in to the admin panel to review this request.\n" . BASE_URL . "OpenOffice/roomreservations";
-                        send_system_email($adminEmail, $adminSubject, $adminMessage);
+                        $adminMessage .= "<p>Please log in to the admin panel to review this request: <a href='" . BASE_URL . "OpenOffice/roomreservations" . "'>" . BASE_URL . "OpenOffice/roomreservations</a></p>";
+                        send_system_email($adminEmail, $adminSubject, $adminMessage, true);
                     }
                     
                     $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)! They are now pending approval. You will receive an email confirmation.";
@@ -772,13 +773,32 @@ class OpenOfficeController {
         }
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if (!$reservation || $reservation['object_type'] !== 'reservation' || $reservation['object_author'] != $_SESSION['user_id'] || $reservation['object_status'] !== 'pending') {
             $_SESSION['error_message'] = 'Invalid request or reservation cannot be cancelled.';
         } else {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
                 $_SESSION['message'] = 'Room reservation request cancelled successfully.';
-                // TODO: Notify admin and user about cancellation if necessary
+                
+                $user = $this->userModel->findUserById($reservation['object_author']);
+                $room = $this->roomModel->getRoomById($reservation['object_parent']);
+
+                if ($user && !empty($user['user_email']) && $room) {
+                    $subject = "Room Reservation Cancelled - {$siteName}";
+                    $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                    $body .= "<p>Your reservation for the room '<strong>" . htmlspecialchars($room['object_title']) . "</strong>' scheduled from " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')) . " to " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')) . " has been <strong>cancelled by you</strong>.</p>";
+                    $body .= "<p><strong>Details:</strong></p>";
+                    $body .= "<ul>";
+                    $body .= "<li><strong>Room:</strong> " . htmlspecialchars($room['object_title']) . "</li>";
+                    $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')) . "</li>";
+                    $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                    $body .= "</ul>";
+                    $body .= "<p>If this was a mistake, please contact an administrator or create a new reservation.</p>";
+                    $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                    send_system_email($user['user_email'], $subject, $body, true);
+                }
+
             } else {
                 $_SESSION['error_message'] = 'Could not cancel room reservation request.';
             }
@@ -793,6 +813,7 @@ class OpenOfficeController {
         $reservationId = (int)$reservationId;
         $reservationToApprove = $this->reservationModel->getObjectById($reservationId);
         $success = false; $message = 'Invalid request.';
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if ($reservationToApprove && $reservationToApprove['object_type'] === 'reservation') {
             if ($reservationToApprove['object_status'] === 'pending') {
@@ -807,8 +828,24 @@ class OpenOfficeController {
                     } else {
                         if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                             $success = true; $message = 'Room reservation approved successfully.';
-                            // TODO: Email user about approval.
-                            // TODO: Optionally, automatically deny other overlapping PENDING reservations for the same room and time.
+                            
+                            $user = $this->userModel->findUserById($reservationToApprove['object_author']);
+                            $room = $this->roomModel->getRoomById($roomId);
+
+                            if ($user && !empty($user['user_email']) && $room) {
+                                $subject = "Room Reservation Approved - {$siteName}";
+                                $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                                $body .= "<p>Your reservation request for the room '<strong>" . htmlspecialchars($room['object_title']) . "</strong>' has been <strong>approved</strong>.</p>";
+                                $body .= "<p><strong>Reservation Details:</strong></p>";
+                                $body .= "<ul>";
+                                $body .= "<li><strong>Room:</strong> " . htmlspecialchars($room['object_title']) . "</li>";
+                                $body .= "<li><strong>Time:</strong> " . htmlspecialchars(format_datetime_for_display($startTime)) . " to " . htmlspecialchars(format_datetime_for_display($endTime)) . "</li>";
+                                $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservationToApprove['object_content'] ?? 'N/A')) . "</li>";
+                                $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                                $body .= "</ul>";
+                                $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                                send_system_email($user['user_email'], $subject, $body, true);
+                            }
                         } else { $message = 'Could not approve room reservation due to a system error.'; }
                     }
                 } else { $message = 'Error: Reservation is missing start or end time data.'; }
@@ -826,14 +863,32 @@ class OpenOfficeController {
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
         $success = false; $message = 'Invalid request.';
+        $siteName = $this->optionModel->getOption('site_name', 'Mainsystem');
 
         if ($reservation && $reservation['object_type'] === 'reservation') {
-            if (in_array($reservation['object_status'], ['pending', 'approved'])) {
+            if (in_array($reservation['object_status'], ['pending', 'approved'])) { 
                 $originalStatus = $reservation['object_status'];
                 if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
                     $success = true;
                     $message = 'Room reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
-                     // TODO: Email user about denial.
+                    
+                    $user = $this->userModel->findUserById($reservation['object_author']);
+                    $room = $this->roomModel->getRoomById($reservation['object_parent']);
+
+                    if ($user && !empty($user['user_email']) && $room) {
+                        $subject = "Room Reservation Denied - {$siteName}";
+                        $body = "<p>Dear " . htmlspecialchars($user['display_name']) . ",</p>";
+                        $body .= "<p>We regret to inform you that your reservation request for the room '<strong>" . htmlspecialchars($room['object_title']) . "</strong>' from " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_start_datetime'] ?? '')) . " to " . htmlspecialchars(format_datetime_for_display($reservation['meta']['reservation_end_datetime'] ?? '')) . " has been <strong>denied</strong>.</p>";
+                        $body .= "<p><strong>Details of Denied Request:</strong></p>";
+                        $body .= "<ul>";
+                        $body .= "<li><strong>Room:</strong> " . htmlspecialchars($room['object_title']) . "</li>";
+                        $body .= "<li><strong>Purpose:</strong> " . nl2br(htmlspecialchars($reservation['object_content'] ?? 'N/A')) . "</li>";
+                        $body .= "<li><strong>Reservation ID:</strong> " . $reservationId . "</li>";
+                        $body .= "</ul>";
+                        $body .= "<p>If you have any questions, please contact the administrator.</p>";
+                        $body .= "<p>Thank you,<br>The {$siteName} Team</p>";
+                        send_system_email($user['user_email'], $subject, $body, true);
+                    }
                 } else { $message = 'Could not deny room reservation.'; }
             } else { $message = 'Only pending or approved room reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
         }
@@ -877,9 +932,7 @@ class OpenOfficeController {
     
     private function mergeTimeSlots(array $slots, string $date): array {
         if (empty($slots)) return [];
-        // Sort slots by their start time
         usort($slots, function($a, $b) {
-            // Extract the start time part (e.g., "08:00" from "08:00-09:00")
             $a_start_time = explode('-', $a)[0];
             $b_start_time = explode('-', $b)[0];
             return strtotime($a_start_time) - strtotime($b_start_time);
@@ -890,12 +943,11 @@ class OpenOfficeController {
 
         foreach ($slots as $slot) {
             $timeParts = explode('-', $slot);
-            if (count($timeParts) !== 2) continue; // Skip invalid format
+            if (count($timeParts) !== 2) continue; 
 
             $slotStart = trim($timeParts[0]);
             $slotEnd = trim($timeParts[1]);
             
-            // Convert to full datetime strings for DateTime object creation
             $fullStartDateTimeStr = $date . ' ' . $slotStart . ':00';
             $fullEndDateTimeStr = $date . ' ' . $slotEnd . ':00';
 
@@ -903,7 +955,6 @@ class OpenOfficeController {
                 $currentSlotStart = new DateTime($fullStartDateTimeStr);
                 $currentSlotEnd = new DateTime($fullEndDateTimeStr);
             } catch (Exception $e) {
-                // Log error or handle invalid date/time format in slot
                 error_log("Error parsing time slot '{$slot}' on date '{$date}': " . $e->getMessage());
                 continue; 
             }
@@ -914,14 +965,11 @@ class OpenOfficeController {
                     'end' => $currentSlotEnd
                 ];
             } else {
-                // If the current slot starts at or before the current merge ends (allowing for adjacent slots)
                 if ($currentSlotStart <= $currentMerge['end']) {
-                    // Extend the end time if the current slot ends later
                     if ($currentSlotEnd > $currentMerge['end']) {
                         $currentMerge['end'] = $currentSlotEnd;
                     }
                 } else {
-                    // Gap detected, finalize the current merge and start a new one
                     $mergedRanges[] = [
                         'start' => $currentMerge['start']->format('Y-m-d H:i:s'),
                         'end' => $currentMerge['end']->format('Y-m-d H:i:s'),
@@ -935,7 +983,6 @@ class OpenOfficeController {
             }
         }
 
-        // Add the last merged range
         if ($currentMerge !== null) {
             $mergedRanges[] = [
                 'start' => $currentMerge['start']->format('Y-m-d H:i:s'),

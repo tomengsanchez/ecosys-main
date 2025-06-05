@@ -67,6 +67,23 @@ define('SMTP_SECURE', PHPMailer::ENCRYPTION_STARTTLS); // Or PHPMailer::ENCRYPTI
 define('SMTP_AUTH', true);
 define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for detailed logs during development
 
+// PHPMailer SMTP Settings for Gmail Staging
+// define('SMTP_HOST', 'smtp.gmail.com');
+// define('SMTP_USERNAME', 'tomengskiee@gmail.com'); // Your Gmail address
+// define('SMTP_PASSWORD', 'pwfeatrrodkklulr');   // Your Gmail App Password (recommended)
+// define('SMTP_PORT', 587); // Or 465 if using SSL
+// define('SMTP_SECURE', PHPMailer::ENCRYPTION_STARTTLS); // Or PHPMailer::ENCRYPTION_SMTPS for port 465
+// define('SMTP_AUTH', true);
+// define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for detailed logs during development
+
+// PHPMailer SMTP Settings for Live
+// define('SMTP_HOST', 'smtp.gmail.com');
+// define('SMTP_USERNAME', 'tomengskiee@gmail.com'); // Your Gmail address
+// define('SMTP_PASSWORD', 'pwfeatrrodkklulr');   // Your Gmail App Password (recommended)
+// define('SMTP_PORT', 587); // Or 465 if using SSL
+// define('SMTP_SECURE', PHPMailer::ENCRYPTION_STARTTLS); // Or PHPMailer::ENCRYPTION_SMTPS for port 465
+// define('SMTP_AUTH', true);
+// define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for detailed logs during development
 
 $pdo = null; 
 $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
