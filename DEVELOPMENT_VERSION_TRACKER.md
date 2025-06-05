@@ -1,6 +1,40 @@
 Development Version Tracker - Mainsystem PHP Project
 This document tracks the development progress, versions, and notable changes for the Mainsystem PHP project.
 
+Version 0.22.0 - Comprehensive Email Notifications with PHPMailer (2025-06-05)
+Date: 2025-06-05
+
+Features Implemented & Key Changes:
+
+Email System Overhaul:
+Integrated PHPMailer: Replaced the basic mail() function usage with PHPMailer for more robust and reliable email sending.
+SMTP Configuration: Added SMTP configuration to config.php, specifically tailored for sending emails via Gmail using App Passwords for enhanced security.
+Updated send_system_email() Function: Rewrote the global email sending function in config.php to utilize PHPMailer, supporting HTML emails, attachments, CC, and BCC.
+
+Room Reservation Notifications (OpenOfficeController.php):
+Request Submission: Users now receive an HTML-formatted email confirmation upon submitting a room reservation request. Administrators also receive an HTML-formatted notification of the new pending request.
+Approval/Denial: Users receive an HTML-formatted email when their room reservation request is approved or denied by an administrator.
+Cancellation: Users receive an HTML-formatted email confirmation when they cancel their own pending room reservation.
+
+Vehicle Request Notifications (VehicleRequestController.php):
+Request Submission: Users receive an HTML-formatted email confirmation upon submitting a vehicle request. Administrators also receive an HTML-formatted notification of the new pending request.
+Approval/Denial: Users receive an HTML-formatted email when their vehicle request is approved or denied by an administrator.
+Cancellation: Users receive an HTML-formatted email confirmation when they cancel their own pending vehicle request.
+
+Enhanced Email Content:
+All system-generated email notifications for room and vehicle reservations now use HTML for improved formatting, readability, and a more professional appearance. Details are presented clearly, often using lists and bold text.
+
+Key Benefits:
+Improved reliability of email delivery using SMTP and PHPMailer.
+Enhanced user experience with comprehensive and well-formatted email notifications for key actions.
+Better administrative awareness of pending requests.
+More secure email sending practice by encouraging the use of App Passwords for Gmail.
+
+To-Do / Next Steps:
+Continue testing email deliverability and content across different email clients.
+Consider adding email notifications for other relevant system events (e.g., user registration, password resets if implemented).
+Further refine HTML email templates if more sophisticated branding or styling is required.
+
 Version 0.21.0 - Model Refactoring & UI Fixes (2025-06-03)
 Date: 2025-06-03
 
