@@ -10,7 +10,7 @@ class OpenOfficeController {
     private $reservationModel; 
     private $roomModel;        
     private $userModel;
-    private $optionModel;
+    private $optionModel; // To get admin email for notifications
 
     /**
      * Constructor
@@ -22,7 +22,7 @@ class OpenOfficeController {
         $this->reservationModel = new ReservationModel($this->pdo);
         $this->roomModel = new RoomModel($this->pdo); 
         $this->userModel = new UserModel($this->pdo);
-        $this->optionModel = new OptionModel($this->pdo);
+        $this->optionModel = new OptionModel($this->pdo); // Instantiate OptionModel
 
         if (!isLoggedIn()) {
             redirect('auth/login');
@@ -525,14 +525,17 @@ class OpenOfficeController {
             'room' => $room, 'approved_reservations_data_for_js' => $approvedReservationsData, 
             'breadcrumbs' => [['label' => 'Open Office', 'url' => 'OpenOffice/rooms'], ['label' => 'Rooms', 'url' => 'OpenOffice/rooms'], ['label' => 'Book Room']]
         ];
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
             $reservationDate = trim($_POST['reservation_date'] ?? '');
             $reservationTimeSlots = $_POST['reservation_time_slots'] ?? []; 
             $reservationPurpose = trim($_POST['reservation_purpose'] ?? '');
             if (!is_array($reservationTimeSlots)) $reservationTimeSlots = [$reservationTimeSlots];
+            
             $formData = ['reservation_date' => $reservationDate, 'reservation_time_slots' => $reservationTimeSlots, 'reservation_purpose' => $reservationPurpose, 'errors' => []];
             $data = array_merge($commonData, $formData);
+
             // Validation
             if (empty($data['reservation_date'])) $data['errors']['date_err'] = 'Reservation date is required.';
             elseif (new DateTime($data['reservation_date']) < new DateTime(date('Y-m-d'))) $data['errors']['date_err'] = 'Reservation date cannot be in the past.';
@@ -544,29 +547,101 @@ class OpenOfficeController {
                 $mergedReservationRanges = $this->mergeTimeSlots($data['reservation_time_slots'], $data['reservation_date']);
                 if (empty($mergedReservationRanges)) $data['errors']['time_slot_err'] = 'No valid time slots could be merged.';
             }
+
             if (empty($data['errors']) && !empty($mergedReservationRanges)) {
-                $totalCreated = 0; $failedReservations = []; $reservedSlotsDisplay = [];
+                $totalCreated = 0; 
+                $failedReservations = []; 
+                $successfulReservationDetailsForEmail = []; // Store details for email
+
                 foreach ($mergedReservationRanges as $mergedRange) {
-                    $fullStartDateTimeStr = $mergedRange['start']; $fullEndDateTimeStr = $mergedRange['end'];
+                    $fullStartDateTimeStr = $mergedRange['start']; 
+                    $fullEndDateTimeStr = $mergedRange['end'];
+
                     $conflicts = $this->reservationModel->getConflictingReservations($roomId, $fullStartDateTimeStr, $fullEndDateTimeStr, ['approved'], null, 'reservation');
                     if ($conflicts && count($conflicts) > 0) {
                         $failedReservations[] = ['slot' => $mergedRange['slot_display'], 'reason' => 'Conflicts with existing approved reservation.'];
-                        $data['errors']['form_err'] = 'Some selected time slots are already booked.'; continue;
+                        $data['errors']['form_err'] = 'Some selected time slots are already booked.'; 
+                        continue;
                     }
+
                     $reservationObjectData = [
-                        'object_author' => $_SESSION['user_id'], 'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
-                        'object_type' => 'reservation', 'object_parent' => $roomId, 'object_status' => 'pending', 'object_content' => $data['reservation_purpose'],
-                        'meta_fields' => ['reservation_start_datetime' => $fullStartDateTimeStr, 'reservation_end_datetime' => $fullEndDateTimeStr, 'reservation_user_id' => $_SESSION['user_id']]
+                        'object_author' => $_SESSION['user_id'], 
+                        'object_title' => 'Reservation for ' . $room['object_title'] . ' by ' . $_SESSION['display_name'],
+                        'object_type' => 'reservation', 
+                        'object_parent' => $roomId, 
+                        'object_status' => 'pending', // All new reservations are pending
+                        'object_content' => $data['reservation_purpose'],
+                        'meta_fields' => [
+                            'reservation_start_datetime' => $fullStartDateTimeStr, 
+                            'reservation_end_datetime' => $fullEndDateTimeStr, 
+                            'reservation_user_id' => $_SESSION['user_id']
+                        ]
                     ];
                     $reservationId = $this->reservationModel->createObject($reservationObjectData);
-                    if ($reservationId) { $totalCreated++; $reservedSlotsDisplay[] = $mergedRange['slot_display']; /* Email logic */ }
-                    else { $failedReservations[] = ['slot' => $mergedRange['slot_display'], 'reason' => 'Failed to save to database.']; }
+
+                    if ($reservationId) { 
+                        $totalCreated++; 
+                        // Store details for the combined email
+                        $successfulReservationDetailsForEmail[] = [
+                            'room_name' => $room['object_title'],
+                            'start_time' => format_datetime_for_display($fullStartDateTimeStr),
+                            'end_time' => format_datetime_for_display($fullEndDateTimeStr),
+                            'purpose' => $data['reservation_purpose'],
+                            'reservation_id' => $reservationId
+                        ];
+                    } else { 
+                        $failedReservations[] = ['slot' => $mergedRange['slot_display'], 'reason' => 'Failed to save to database.']; 
+                    }
                 }
+
                 if ($totalCreated > 0) {
-                    $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)!";
+                    // Send notifications
+                    $user = $this->userModel->findUserById($_SESSION['user_id']);
+                    $adminEmail = $this->optionModel->getOption('site_admin_email_notifications', DEFAULT_ADMIN_EMAIL_NOTIFICATIONS); // Get admin email
+
+                    if ($user && !empty($user['user_email'])) {
+                        $userSubject = "Room Reservation Request Submitted";
+                        $userMessage = "Dear " . htmlspecialchars($user['display_name']) . ",\n\n";
+                        $userMessage .= "Your room reservation request(s) have been successfully submitted and are pending approval:\n\n";
+                        foreach($successfulReservationDetailsForEmail as $detail) {
+                            $userMessage .= "Room: " . htmlspecialchars($detail['room_name']) . "\n";
+                            $userMessage .= "Time: " . htmlspecialchars($detail['start_time']) . " to " . htmlspecialchars($detail['end_time']) . "\n";
+                            $userMessage .= "Purpose: " . htmlspecialchars($detail['purpose']) . "\n";
+                            $userMessage .= "Request ID: " . $detail['reservation_id'] . "\n\n";
+                        }
+                        $userMessage .= "You will be notified once your request(s) have been reviewed.\n\nThank you.";
+                        send_system_email($user['user_email'], $userSubject, $userMessage);
+                    }
+
+                    if ($adminEmail) {
+                        $adminSubject = "New Room Reservation Request Pending Approval";
+                        $adminMessage = "A new room reservation request(s) has been submitted and requires your approval:\n\n";
+                        $adminMessage .= "User: " . htmlspecialchars($user['display_name'] ?? 'N/A') . " (ID: " . $_SESSION['user_id'] . ")\n\n";
+                        foreach($successfulReservationDetailsForEmail as $detail) {
+                            $adminMessage .= "Room: " . htmlspecialchars($detail['room_name']) . "\n";
+                            $adminMessage .= "Time: " . htmlspecialchars($detail['start_time']) . " to " . htmlspecialchars($detail['end_time']) . "\n";
+                            $adminMessage .= "Purpose: " . htmlspecialchars($detail['purpose']) . "\n";
+                            $adminMessage .= "Request ID: " . $detail['reservation_id'] . "\n\n";
+                        }
+                        $adminMessage .= "Please log in to the admin panel to review this request.\n" . BASE_URL . "OpenOffice/roomreservations";
+                        send_system_email($adminEmail, $adminSubject, $adminMessage);
+                    }
+                    
+                    $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)! They are now pending approval. You will receive an email confirmation.";
+                    if (!empty($failedReservations)) {
+                        $_SESSION['error_message'] = "Some merged slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                    }
                     redirect('OpenOffice/myreservations');
-                } else { $data['errors']['form_err'] = 'No reservation requests could be submitted.'; $this->view('openoffice/reservation_form', $data); }
-            } else { $this->view('openoffice/reservation_form', $data); }
+                } else { 
+                    $data['errors']['form_err'] = 'Something went wrong. No reservation requests could be submitted.';
+                     if (!empty($failedReservations)) {
+                         $data['errors']['form_err'] .= " Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                    }
+                    $this->view('openoffice/reservation_form', $data); 
+                }
+            } else { 
+                $this->view('openoffice/reservation_form', $data); 
+            }
         } else {
             $data = array_merge($commonData, ['reservation_date' => date('Y-m-d'), 'reservation_time_slots' => [], 'reservation_purpose' => '', 'errors' => []]);
             $this->view('openoffice/reservation_form', $data); 
@@ -703,6 +778,7 @@ class OpenOfficeController {
         } else {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
                 $_SESSION['message'] = 'Room reservation request cancelled successfully.';
+                // TODO: Notify admin and user about cancellation if necessary
             } else {
                 $_SESSION['error_message'] = 'Could not cancel room reservation request.';
             }
@@ -731,6 +807,8 @@ class OpenOfficeController {
                     } else {
                         if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'approved'])) {
                             $success = true; $message = 'Room reservation approved successfully.';
+                            // TODO: Email user about approval.
+                            // TODO: Optionally, automatically deny other overlapping PENDING reservations for the same room and time.
                         } else { $message = 'Could not approve room reservation due to a system error.'; }
                     }
                 } else { $message = 'Error: Reservation is missing start or end time data.'; }
@@ -755,6 +833,7 @@ class OpenOfficeController {
                 if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'denied'])) {
                     $success = true;
                     $message = 'Room reservation ' . ($originalStatus === 'approved' ? 'approval revoked and reservation denied.' : 'denied successfully.');
+                     // TODO: Email user about denial.
                 } else { $message = 'Could not deny room reservation.'; }
             } else { $message = 'Only pending or approved room reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
         }
@@ -798,33 +877,71 @@ class OpenOfficeController {
     
     private function mergeTimeSlots(array $slots, string $date): array {
         if (empty($slots)) return [];
+        // Sort slots by their start time
         usort($slots, function($a, $b) {
-            return strtotime(explode('-', $a)[0]) - strtotime(explode('-', $b)[0]);
+            // Extract the start time part (e.g., "08:00" from "08:00-09:00")
+            $a_start_time = explode('-', $a)[0];
+            $b_start_time = explode('-', $b)[0];
+            return strtotime($a_start_time) - strtotime($b_start_time);
         });
-        $mergedRanges = []; $currentMerge = null;
+
+        $mergedRanges = [];
+        $currentMerge = null;
+
         foreach ($slots as $slot) {
             $timeParts = explode('-', $slot);
-            if (count($timeParts) !== 2) continue;
-            $slotStart = trim($timeParts[0]); $slotEnd = trim($timeParts[1]);
+            if (count($timeParts) !== 2) continue; // Skip invalid format
+
+            $slotStart = trim($timeParts[0]);
+            $slotEnd = trim($timeParts[1]);
+            
+            // Convert to full datetime strings for DateTime object creation
             $fullStartDateTimeStr = $date . ' ' . $slotStart . ':00';
             $fullEndDateTimeStr = $date . ' ' . $slotEnd . ':00';
+
             try {
                 $currentSlotStart = new DateTime($fullStartDateTimeStr);
                 $currentSlotEnd = new DateTime($fullEndDateTimeStr);
-            } catch (Exception $e) { continue; }
+            } catch (Exception $e) {
+                // Log error or handle invalid date/time format in slot
+                error_log("Error parsing time slot '{$slot}' on date '{$date}': " . $e->getMessage());
+                continue; 
+            }
+
             if ($currentMerge === null) {
-                $currentMerge = ['start' => $currentSlotStart, 'end' => $currentSlotEnd];
+                $currentMerge = [
+                    'start' => $currentSlotStart,
+                    'end' => $currentSlotEnd
+                ];
             } else {
+                // If the current slot starts at or before the current merge ends (allowing for adjacent slots)
                 if ($currentSlotStart <= $currentMerge['end']) {
-                    if ($currentSlotEnd > $currentMerge['end']) $currentMerge['end'] = $currentSlotEnd;
+                    // Extend the end time if the current slot ends later
+                    if ($currentSlotEnd > $currentMerge['end']) {
+                        $currentMerge['end'] = $currentSlotEnd;
+                    }
                 } else {
-                    $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
-                    $currentMerge = ['start' => $currentSlotStart, 'end' => $currentSlotEnd];
+                    // Gap detected, finalize the current merge and start a new one
+                    $mergedRanges[] = [
+                        'start' => $currentMerge['start']->format('Y-m-d H:i:s'),
+                        'end' => $currentMerge['end']->format('Y-m-d H:i:s'),
+                        'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')
+                    ];
+                    $currentMerge = [
+                        'start' => $currentSlotStart,
+                        'end' => $currentSlotEnd
+                    ];
                 }
             }
         }
+
+        // Add the last merged range
         if ($currentMerge !== null) {
-            $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
+            $mergedRanges[] = [
+                'start' => $currentMerge['start']->format('Y-m-d H:i:s'),
+                'end' => $currentMerge['end']->format('Y-m-d H:i:s'),
+                'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')
+            ];
         }
         return $mergedRanges;
     }

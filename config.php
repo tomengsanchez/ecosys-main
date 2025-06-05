@@ -1,8 +1,17 @@
 <?php
 // sleep(3);
 /**
- * Database Configuration, Session Management, Role/Capability, and Email Definitions
+ * Database Configuration, Session Management, Role/Capability, Email Definitions, and PHPMailer Setup
  */
+
+// --- PHPMailer ---
+// Make sure you have run 'composer install' in your project root.
+// This will create a 'vendor' directory with PHPMailer.
+require_once __DIR__ . '/vendor/autoload.php'; // Loads PHPMailer and other Composer packages
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
 
 // ** MySQL settings ** //
 define('DB_NAME', 'maindb2');
@@ -21,10 +30,19 @@ date_default_timezone_set('Asia/Manila');
 // Default Time Format if not set in options
 define('DEFAULT_TIME_FORMAT', 'Y-m-d H:i');
 
-// --- Email Configuration Defaults ---
-define('DEFAULT_SITE_EMAIL_FROM', 'noreply@example.com'); 
-define('DEFAULT_ADMIN_EMAIL_NOTIFICATIONS', 'admin@example.com'); 
+// --- Email Configuration (General & PHPMailer SMTP for Gmail) ---
+define('DEFAULT_SITE_EMAIL_FROM', 'your-email@gmail.com'); // Your "From" email address
+define('DEFAULT_ADMIN_EMAIL_NOTIFICATIONS', 'your-admin-email@example.com'); // Where admin notifications go
 define('DEFAULT_EMAIL_NOTIFICATIONS_ENABLED', 'on'); 
+
+// PHPMailer SMTP Settings for Gmail
+define('SMTP_HOST', 'smtp.gmail.com');
+define('SMTP_USERNAME', 'tomengskiee@gmail.com'); // Your Gmail address
+define('SMTP_PASSWORD', 'pwfeatrrodkklulr');   // Your Gmail App Password (recommended)
+define('SMTP_PORT', 587); // Or 465 if using SSL
+define('SMTP_SECURE', PHPMailer::ENCRYPTION_STARTTLS); // Or PHPMailer::ENCRYPTION_SMTPS for port 465
+define('SMTP_AUTH', true);
+define('SMTP_DEBUG_LEVEL', SMTP::DEBUG_OFF); // Set to SMTP::DEBUG_SERVER for detailed logs during development
 
 
 $pdo = null; 
@@ -123,8 +141,20 @@ function format_datetime_for_display($datetimeString, $customFormat = null) {
     }
 }
 
-function send_system_email($to, $subject, $message, $additional_headers = null) {
-    global $pdo;
+/**
+ * Sends an email using PHPMailer with SMTP configuration.
+ *
+ * @param string $to Recipient email address.
+ * @param string $subject Email subject.
+ * @param string $message Email body (HTML or plain text).
+ * @param bool $isHtml Whether the message is HTML. Defaults to false (plain text).
+ * @param array $attachments Array of file paths to attach.
+ * @param array $ccAddresses Array of CC email addresses.
+ * @param array $bccAddresses Array of BCC email addresses.
+ * @return bool True if email was sent successfully, false otherwise.
+ */
+function send_system_email($to, $subject, $message, $isHtml = false, $attachments = [], $ccAddresses = [], $bccAddresses = []) {
+    global $pdo; // For OptionModel
 
     if (!class_exists('OptionModel')) {
         $modelPath = __DIR__ . '/app/models/OptionModel.php';
@@ -143,28 +173,64 @@ function send_system_email($to, $subject, $message, $additional_headers = null) 
     }
 
     $siteName = $optionModel->getOption('site_name', 'Mainsystem'); 
-    $fromEmail = $optionModel->getOption('site_email_from', DEFAULT_SITE_EMAIL_FROM);
+    // Use defined constants for SMTP credentials, fallback to DB options if needed (though constants are simpler here)
+    $fromEmail = SMTP_USERNAME; // The SMTP username is typically the "From" email
+    $fromName = $siteName; // Use site name as the "From" name
 
-    $headers = "From: {$siteName} <{$fromEmail}>\r\n";
-    $headers .= "Reply-To: {$fromEmail}\r\n";
-    $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
-    $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/plain; charset=UTF-8\r\n"; 
+    $mail = new PHPMailer(true); // Passing `true` enables exceptions
 
-    if (is_array($additional_headers)) {
-        foreach ($additional_headers as $header) {
-            $headers .= $header . "\r\n";
+    try {
+        // Server settings
+        $mail->SMTPDebug = SMTP_DEBUG_LEVEL;          // Enable verbose debug output (set to SMTP::DEBUG_OFF for production)
+        $mail->isSMTP();                              // Send using SMTP
+        $mail->Host       = SMTP_HOST;                // Set the SMTP server to send through
+        $mail->SMTPAuth   = SMTP_AUTH;                // Enable SMTP authentication
+        $mail->Username   = SMTP_USERNAME;            // SMTP username (your Gmail address)
+        $mail->Password   = SMTP_PASSWORD;            // SMTP password (your Gmail App Password)
+        $mail->SMTPSecure = SMTP_SECURE;              // Enable implicit TLS/SSL encryption
+        $mail->Port       = SMTP_PORT;                // TCP port to connect to
+
+        // Recipients
+        $mail->setFrom($fromEmail, $fromName);
+        $mail->addAddress($to); // Add a recipient (name is optional)
+        // $mail->addReplyTo('info@example.com', 'Information'); // Optional
+
+        // CC and BCC
+        if (!empty($ccAddresses)) {
+            foreach ($ccAddresses as $cc) {
+                $mail->addCC($cc);
+            }
         }
-    }
+        if (!empty($bccAddresses)) {
+            foreach ($bccAddresses as $bcc) {
+                $mail->addBCC($bcc);
+            }
+        }
 
-    $fullMessage = $message . "\r\n\r\n--\r\nThis is an automated message from " . $siteName . ".\r\n" . BASE_URL;
-    $subjectWithSiteName = "[{$siteName}] " . $subject;
+        // Attachments
+        if (!empty($attachments)) {
+            foreach ($attachments as $attachmentPath) {
+                if (file_exists($attachmentPath)) {
+                    $mail->addAttachment($attachmentPath); // Add attachments
+                } else {
+                    error_log("PHPMailer: Attachment file not found - {$attachmentPath}");
+                }
+            }
+        }
 
-    if (mail($to, $subjectWithSiteName, $fullMessage, $headers)) {
-        error_log("Email successfully sent to {$to} with subject '{$subjectWithSiteName}'.");
+        // Content
+        $mail->isHTML($isHtml); // Set email format to HTML or plain text
+        $mail->Subject = "[{$siteName}] " . $subject; // Prepend site name to subject
+        $mail->Body    = $message;
+        if (!$isHtml) {
+            $mail->AltBody = strip_tags($message); // For non-HTML mail clients, strip tags
+        }
+
+        $mail->send();
+        error_log("PHPMailer: Email successfully sent to {$to} with subject '[{$siteName}] {$subject}'.");
         return true;
-    } else {
-        error_log("Failed to send email to {$to} with subject '{$subjectWithSiteName}'. Check mail server configuration.");
+    } catch (Exception $e) {
+        error_log("PHPMailer: Message could not be sent. Mailer Error: {$mail->ErrorInfo}. Exception: {$e->getMessage()}");
         return false;
     }
 }
