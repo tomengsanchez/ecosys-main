@@ -24,6 +24,29 @@ define('DB_COLLATE', '');
 define('BASE_URL', '/mainsystem/'); 
 define('VIEWS_DIR', __DIR__ . '/app/views/');
 
+
+// ** MySQL settings Staging ** //
+// define('DB_NAME', 'ms1_staging');
+// define('DB_USER', 'ms1user');
+// define('DB_PASSWORD', 'mainsystem#67');
+// define('DB_HOST', 'localhost');
+// define('DB_CHARSET', 'utf8mb4');
+// define('DB_COLLATE', '');
+
+// define('BASE_URL', '/ecosys-main/'); 
+// define('VIEWS_DIR', __DIR__ . '/app/views/');
+
+// ** MySQL settings Live ** //
+// define('DB_NAME', 'maindb2');
+// define('DB_USER', 'root');
+// define('DB_PASSWORD', '');
+// define('DB_HOST', 'localhost');
+// define('DB_CHARSET', 'utf8mb4');
+// define('DB_COLLATE', '');
+
+// define('BASE_URL', '/mainsystem/'); 
+// define('VIEWS_DIR', __DIR__ . '/app/views/');
+
 // Default Timezone
 date_default_timezone_set('Asia/Manila'); 
 
