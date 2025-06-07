@@ -20,6 +20,7 @@ require_once __DIR__ . '/../layouts/header.php';
                 ?>
 
                 <form action="<?php echo BASE_URL . 'auth/processlogin'; ?>" method="POST">
+                    <?php echo get_csrf_input(); // Add CSRF token input field ?>
                     <div class="mb-3">
                         <label for="username_or_email" class="form-label">Username or Email:</label>
                         <input type="text" name="username_or_email" id="username_or_email" class="form-control <?php echo (!empty($data['errors']['username_or_email_err'])) ? 'is-invalid' : ''; ?>"

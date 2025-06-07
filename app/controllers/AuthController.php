@@ -5,7 +5,7 @@
  *
  * Handles user authentication (login, logout).
  */
-class AuthController {
+class AuthController extends BaseController {
     private $pdo;
     private $userModel;
 
@@ -36,6 +36,12 @@ class AuthController {
     public function processLogin() {
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+
+            // Verify CSRF token
+            if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+                $this->setFlashMessage('error', 'CSRF token validation failed. Please try again.');
+                redirect('auth/login');
+            }
 
             $usernameOrEmail = trim($_POST['username_or_email'] ?? '');
             $password = trim($_POST['password'] ?? '');
@@ -97,19 +103,5 @@ class AuthController {
         );
         session_destroy();
         redirect('auth/login'); 
-    }
-
-    /**
-     * Load a view file.
-     */
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            extract($data);
-            require_once $viewFile;
-        } else {
-            error_log("View file not found: {$viewFile}");
-            die('View not found.');
-        }
     }
 }

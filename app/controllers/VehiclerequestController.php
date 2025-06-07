@@ -6,7 +6,7 @@
  * Handles all operations for vehicle reservations (requests).
  * Uses the 'objects' table with object_type = 'vehicle_reservation'.
  */
-class VehicleRequestController {
+class VehicleRequestController extends BaseController {
     private $pdo;
     private $reservationModel; // Using existing ReservationModel, will adapt for vehicle_reservation
     private $vehicleModel;
@@ -36,7 +36,7 @@ class VehicleRequestController {
      */
     public function index() {
         if (!userHasCapability('VIEW_ALL_VEHICLE_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to view all vehicle reservations.";
+            $this->setFlashMessage('error', "You do not have permission to view all vehicle reservations.");
             redirect('dashboard');
         }
         
@@ -73,19 +73,19 @@ class VehicleRequestController {
      */
     public function create($vehicleId = null) {
         if (!userHasCapability('CREATE_VEHICLE_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to request vehicles.";
+            $this->setFlashMessage('error', "You do not have permission to request vehicles.");
             redirect('vehicle'); 
         }
         
         if ($vehicleId === null) {
-            $_SESSION['error_message'] = 'No vehicle selected for reservation.';
+            $this->setFlashMessage('error', 'No vehicle selected for reservation.');
             redirect('vehicle');
         }
         $vehicleId = (int)$vehicleId;
         $vehicle = $this->vehicleModel->getVehicleById($vehicleId); 
 
         if (!$vehicle || $vehicle['object_status'] !== 'available') { 
-            $_SESSION['error_message'] = 'This vehicle is not available for reservation or does not exist.';
+            $this->setFlashMessage('error', 'This vehicle is not available for reservation or does not exist.');
             redirect('vehicle');
         }
         
@@ -200,9 +200,9 @@ class VehicleRequestController {
                 }
 
                 if ($totalCreated > 0) {
-                    $_SESSION['message'] = "Successfully submitted {$totalCreated} vehicle reservation request(s)! They are now pending approval.";
+                    $this->setFlashMessage('success', "Successfully submitted {$totalCreated} vehicle reservation request(s)! They are now pending approval.");
                     if (!empty($failedReservations)) {
-                        $_SESSION['error_message'] = "Some merged slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason'));
+                        $this->setFlashMessage('warning', "Some merged slots could not be reserved: " . implode(', ', array_column($failedReservations, 'slot')) . ". Reasons: " . implode('; ', array_column($failedReservations, 'reason')));
                     }
                     redirect('VehicleRequest/myrequests');
                 } else {
@@ -347,76 +347,105 @@ class VehicleRequestController {
      */
     public function ajaxGetMyVehicleReservations() {
         header('Content-Type: application/json');
+
         if (!isLoggedIn()) {
-            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not logged in"]);
+            echo json_encode(["draw" => intval($_POST['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not logged in"]);
             exit;
         }
+
         $userId = $_SESSION['user_id'];
+        $draw = intval($_POST['draw'] ?? 0);
+        $start = intval($_POST['start'] ?? 0);
+        $length = intval($_POST['length'] ?? 10);
+        $searchValue = $_POST['search']['value'] ?? '';
+
+        $orderColumnIndex = $_POST['order'][0]['column'] ?? 5; // Default to 'requested_on'
+        $orderColumnName = $_POST['columns'][$orderColumnIndex]['data'] ?? 'object_date';
+        $orderDir = $_POST['order'][0]['dir'] ?? 'desc';
+
+        $columnMapping = [
+            'vehicle_name' => 'vehicle_obj.object_title', // Requires join
+            'object_content' => 'o.object_content', // Purpose
+            'destination' => 'meta_dest.meta_value',
+            'formatted_start_datetime' => 'meta_start.meta_value',
+            'formatted_end_datetime' => 'meta_end.meta_value',
+            'formatted_object_date' => 'o.object_date', // Requested On
+        ];
+        $dbOrderColumn = $columnMapping[$orderColumnName] ?? 'o.object_date';
 
         $conditions = ['o.object_author' => $userId];
-        $args = ['orderby' => 'o.object_date', 'orderdir' => 'DESC', 'include_meta' => true];
-        $myReservations = $this->reservationModel->getAllReservationsOfType('vehicle_reservation', $conditions, $args);
-        
-        $data = [];
-        if ($myReservations) {
-            foreach ($myReservations as $res) {
+        // For searching by vehicle name or destination, the model's search might need enhancement
+        // or search on primary object fields.
+        $args = [
+            'orderby' => $dbOrderColumn,
+            'orderdir' => $orderDir,
+            'limit' => $length,
+            'offset' => $start,
+            'include_meta' => true,
+            // 'search_meta_keys' => ['vehicle_destination'] // If you want to search destination meta
+        ];
+
+        $reservations = $this->reservationModel->getObjectsByConditions('vehicle_reservation', $conditions, $args, $searchValue);
+        $totalRecords = $this->reservationModel->countObjectsByConditions('vehicle_reservation', ['o.object_author' => $userId]);
+        $totalFilteredRecords = $this->reservationModel->countObjectsByConditions('vehicle_reservation', $conditions, $searchValue);
+
+        $dataOutput = [];
+        if ($reservations) {
+            foreach ($reservations as $res) {
                 $vehicle = $this->vehicleModel->getVehicleById($res['object_parent']);
                 $vehicleName = $vehicle ? htmlspecialchars($vehicle['object_title']) : 'Unknown Vehicle';
                 
-                $statusKey = $res['object_status'] ?? 'unknown';
-                $statusLabel = ucfirst($statusKey);
-                $badgeClass = 'bg-secondary';
-                if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
-                elseif ($statusKey === 'approved') $badgeClass = 'bg-success';
-                elseif ($statusKey === 'denied') $badgeClass = 'bg-danger';
-                elseif ($statusKey === 'cancelled') $badgeClass = 'bg-info text-dark';
-                $statusHtml = "<span class=\"badge {$badgeClass}\">" . htmlspecialchars($statusLabel) . "</span>";
-
-                $actionsHtml = '';
+                $statusHtml = get_status_badge($res['object_status'] ?? 'unknown');
+                $actionsHtml = '<span class="text-muted small">No actions</span>';
                 if ($res['object_status'] === 'pending' && userHasCapability('CANCEL_OWN_VEHICLE_RESERVATIONS')) {
                     $actionsHtml .= '<a href="' . BASE_URL . 'VehicleRequest/cancel/' . htmlspecialchars($res['object_id']) . '" 
                                        class="btn btn-sm btn-warning text-dark action-btn" data-action="cancel" data-id="' . htmlspecialchars($res['object_id']) . '" title="Cancel Request"
                                        onclick="return confirm(\'Are you sure you want to cancel this vehicle request?\');">
                                         <i class="fas fa-times-circle"></i> Cancel
                                     </a>';
-                } else {
-                    $actionsHtml = '<span class="text-muted small">No actions</span>';
                 }
 
-                $data[] = [
-                    "id" => htmlspecialchars($res['object_id']),
+                $dataOutput[] = [
+                    "object_id" => htmlspecialchars($res['object_id']),
                     "vehicle_name" => $vehicleName,
-                    "purpose" => nl2br(htmlspecialchars($res['object_content'] ?? 'N/A')),
-                    "destination" => htmlspecialchars($res['meta']['vehicle_destination'] ?? 'N/A'),
-                    "start_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '')),
-                    "end_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '')),
-                    "requested_on" => htmlspecialchars(format_datetime_for_display($res['object_date'])),
-                    "status" => $statusHtml,
-                    "actions" => $actionsHtml
+                    "object_content" => $res['object_content'] ?? '', // Purpose
+                    "destination" => htmlspecialchars($res['meta']['vehicle_destination'] ?? 'N/A'), // Destination
+                    "formatted_start_datetime" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '')),
+                    "formatted_end_datetime" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '')),
+                    "formatted_object_date" => htmlspecialchars(format_datetime_for_display($res['object_date'])), // Requested On
+                    "status_html" => $statusHtml,
+                    "actions_html" => $actionsHtml
                 ];
             }
         }
-        echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => count($data), "recordsFiltered" => count($data), "data" => $data]);
+
+        $response = [
+            "draw" => $draw,
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $totalFilteredRecords,
+            "data" => $dataOutput
+        ];
+        echo json_encode($response);
         exit;
     }
 
 
     public function cancel($reservationId = null) {
         if (!userHasCapability('CANCEL_OWN_VEHICLE_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to cancel vehicle reservations.";
+            $this->setFlashMessage('error', "You do not have permission to cancel vehicle reservations.");
             redirect('VehicleRequest/myrequests');
         }
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
 
         if (!$reservation || $reservation['object_type'] !== 'vehicle_reservation' || $reservation['object_author'] != $_SESSION['user_id'] || $reservation['object_status'] !== 'pending') {
-            $_SESSION['error_message'] = 'Invalid request or reservation cannot be cancelled.';
+            $this->setFlashMessage('error', 'Invalid request or reservation cannot be cancelled.');
         } else {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
-                $_SESSION['message'] = 'Vehicle reservation request cancelled successfully.';
+                $this->setFlashMessage('success', 'Vehicle reservation request cancelled successfully.');
                 // TODO: Email notifications if needed
             } else {
-                $_SESSION['error_message'] = 'Could not cancel vehicle reservation request.';
+                $this->setFlashMessage('error', 'Could not cancel vehicle reservation request.');
             }
         }
         redirect('VehicleRequest/myrequests');
@@ -450,7 +479,7 @@ class VehicleRequestController {
             } else { $message = 'Only pending vehicle reservations can be approved. This one is ' . $reservationToApprove['object_status'] . '.'; }
         }
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('VehicleRequest/index');
     }
 
@@ -473,7 +502,7 @@ class VehicleRequestController {
             } else { $message = 'Only pending or approved vehicle reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
         }
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('VehicleRequest/index');
     }
     
@@ -492,7 +521,7 @@ class VehicleRequestController {
         } else { $message = "Vehicle reservation record ID {$reservationId} not found or not a vehicle reservation.";}
         
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('VehicleRequest/index');
     }
 
@@ -503,7 +532,7 @@ class VehicleRequestController {
             echo json_encode(['success' => false, 'message' => 'Permission denied.']);
             exit;
         }
-        $_SESSION['error_message'] = "You do not have permission for this action.";
+        $this->setFlashMessage('error', "You do not have permission for this action.");
         redirect('dashboard'); 
     }
 
@@ -542,16 +571,5 @@ class VehicleRequestController {
             $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
         }
         return $mergedRanges;
-    }
-
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php'; 
-        if (file_exists($viewFile)) {
-            extract($data); 
-            require_once $viewFile;
-        } else {
-            error_log("VehicleRequestController: View file not found: {$viewFile}");
-            die('Error: View not found (' . htmlspecialchars($view) . '). Please contact support.');
-        }
     }
 }

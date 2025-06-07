@@ -5,7 +5,7 @@
  *
  * Handles the display of the main dashboard area for logged-in users.
  */
-class DashboardController {
+class DashboardController extends BaseController {
     private $pdo;
     private $reservationModel; // For reservation-specific data
     private $roomModel;        // For room-specific data
@@ -160,20 +160,5 @@ class DashboardController {
         
         echo json_encode($calendarEvents);
         exit; // Terminate script after sending JSON
-    }
-
-
-    /**
-     * Load a view file.
-     */
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            extract($data);
-            require_once $viewFile;
-        } else {
-            error_log("View file not found: {$viewFile}");
-            die('View not found.'); 
-        }
     }
 }

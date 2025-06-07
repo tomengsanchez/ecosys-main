@@ -5,7 +5,7 @@
  *
  * Handles administrative tasks and pages.
  */
-class AdminController {
+class AdminController extends BaseController {
     private $pdo;
     private $userModel; 
     private $departmentModel; 
@@ -29,7 +29,7 @@ class AdminController {
             redirect('auth/login');
         }
         if (!userHasCapability('ACCESS_ADMIN_PANEL')) { 
-            $_SESSION['error_message'] = "You do not have permission to access the admin panel.";
+            $this->setFlashMessage('error', "You do not have permission to access the admin panel.");
             redirect('Dashboard'); 
         }
     }
@@ -51,7 +51,7 @@ class AdminController {
     // --- User Management Methods ---
     public function users() {
         if (!userHasCapability('MANAGE_USERS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to manage users.';
+            $this->setFlashMessage('error', 'You do not have permission to manage users.');
             redirect('admin'); 
         }
         $data = [
@@ -67,12 +67,37 @@ class AdminController {
     public function ajaxGetUsers() {
         header('Content-Type: application/json');
         if (!isLoggedIn() || !userHasCapability('MANAGE_USERS')) {
-            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not authorized"]);
+            echo json_encode(["draw" => intval($_POST['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not authorized"]);
             return;
         }
 
-        $users = $this->userModel->getAllUsers();
-        $data = [];
+        $draw = intval($_POST['draw'] ?? 0);
+        $start = intval($_POST['start'] ?? 0);
+        $length = intval($_POST['length'] ?? 10);
+        $searchValue = $_POST['search']['value'] ?? '';
+
+        $orderColumnIndex = $_POST['order'][0]['column'] ?? 0;
+        $orderColumnName = $_POST['columns'][$orderColumnIndex]['data'] ?? 'user_id';
+        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
+
+        // Mapping for UserModel's getAllUsers method (adjust if UserModel changes)
+        $columnMapping = [
+            'user_id' => 'u.user_id',
+            'user_login' => 'u.user_login',
+            'user_email' => 'u.user_email',
+            'display_name' => 'u.display_name',
+            'user_role_display' => 'u.user_role',
+            'department_name' => 'd.department_name',
+            'user_registered_formatted' => 'u.user_registered',
+        ];
+        $dbOrderColumn = $columnMapping[$orderColumnName] ?? 'u.user_id';
+
+        $usersData = $this->userModel->getAllUsers($searchValue, $dbOrderColumn, $orderDir, $start, $length);
+        $users = $usersData['data'];
+        $totalRecords = $usersData['totalRecords'];
+        $totalFilteredRecords = $usersData['totalFilteredRecords'];
+
+        $dataOutput = [];
 
         if ($users) {
             foreach ($users as $user) {
@@ -91,25 +116,25 @@ class AdminController {
                      $actionsHtml .= ' <button class="btn btn-sm btn-danger" title="Cannot delete self or primary admin" disabled><i class="fas fa-trash-alt"></i></button>';
                 }
 
-                $data[] = [
-                    "id" => htmlspecialchars($user['user_id']),
-                    "username" => htmlspecialchars($user['user_login']),
-                    "email" => htmlspecialchars($user['user_email']),
+                $dataOutput[] = [
+                    "user_id" => htmlspecialchars($user['user_id']),
+                    "user_login" => htmlspecialchars($user['user_login']),
+                    "user_email" => htmlspecialchars($user['user_email']),
                     "display_name" => htmlspecialchars($user['display_name']),
-                    "role" => htmlspecialchars(ucfirst($user['user_role'])),
+                    "user_role_display" => htmlspecialchars(ucfirst($user['user_role'])),
                     "department" => htmlspecialchars($user['department_name'] ?? 'N/A'),
-                    "registered" => htmlspecialchars(format_datetime_for_display($user['user_registered'])),
-                    "status" => $statusHtml,
-                    "actions" => $actionsHtml
+                    "user_registered_formatted" => htmlspecialchars(format_datetime_for_display($user['user_registered'])),
+                    "status_html" => $statusHtml,
+                    "actions_html" => $actionsHtml
                 ];
             }
         }
 
         $output = [
-            "draw"            => intval($_GET['draw'] ?? 0),
-            "recordsTotal"    => count($data), 
-            "recordsFiltered" => count($data), 
-            "data"            => $data
+            "draw"            => $draw,
+            "recordsTotal"    => $totalRecords,
+            "recordsFiltered" => $totalFilteredRecords,
+            "data"            => $dataOutput
         ];
         echo json_encode($output);
     }
@@ -117,7 +142,7 @@ class AdminController {
 
     public function addUser() {
         if (!userHasCapability('MANAGE_USERS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to add users.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to add users.');
             redirect('admin/users');
         }
         $departments = $this->departmentModel->getAllDepartments(); 
@@ -180,7 +205,7 @@ class AdminController {
                 );
 
                 if ($userId) {
-                    $_SESSION['admin_message'] = 'User created successfully!';
+                    $this->setFlashMessage('success', 'User created successfully!');
                     redirect('admin/users');
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not create user.';
@@ -199,7 +224,7 @@ class AdminController {
     
     public function editUser($userId = null) {
         if (!userHasCapability('MANAGE_USERS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to edit users.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to edit users.');
             redirect('admin/users');
         }
         if ($userId === null) redirect('admin/users');
@@ -207,7 +232,7 @@ class AdminController {
         $user = $this->userModel->findUserById($userId); 
         $departments = $this->departmentModel->getAllDepartments();
         if (!$user) {
-            $_SESSION['admin_message'] = 'User not found.';
+            $this->setFlashMessage('error', 'User not found.');
             redirect('admin/users');
         }
         $commonData = [
@@ -266,7 +291,7 @@ class AdminController {
                 ];
                 if (!empty($data['user_pass'])) { $updateData['user_pass'] = $data['user_pass']; }
                 if ($this->userModel->updateUser($userId, $updateData)) { 
-                    $_SESSION['admin_message'] = 'User updated successfully!';
+                    $this->setFlashMessage('success', 'User updated successfully!');
                     redirect('admin/users');
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not update user.';
@@ -286,17 +311,23 @@ class AdminController {
 
     public function deleteUser($userId = null) {
         if (!userHasCapability('MANAGE_USERS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to delete users.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to delete users.');
             redirect('admin/users');
         }
         if ($userId === null) redirect('admin/users');
         $userId = (int)$userId;
         $userToDelete = $this->userModel->findUserById($userId);
-        if (!$userToDelete) { $_SESSION['admin_message'] = 'Error: User not found.'; }
-        elseif ($userId == $_SESSION['user_id']) { $_SESSION['admin_message'] = 'Error: You cannot delete your own account.'; }
-        elseif ($userToDelete['user_role'] === 'admin' && $userId == 1) { $_SESSION['admin_message'] = 'Error: The primary super administrator account (ID 1) cannot be deleted.';}
-        elseif ($this->userModel->deleteUser($userId)) { $_SESSION['admin_message'] = 'User deleted successfully.'; }
-        else { $_SESSION['admin_message'] = 'Error: Could not delete user.'; }
+        if (!$userToDelete) {
+            $this->setFlashMessage('error', 'Error: User not found.');
+        } elseif ($userId == $_SESSION['user_id']) {
+            $this->setFlashMessage('error', 'Error: You cannot delete your own account.');
+        } elseif ($userToDelete['user_role'] === 'admin' && $userId == 1) {
+            $this->setFlashMessage('error', 'Error: The primary super administrator account (ID 1) cannot be deleted.');
+        } elseif ($this->userModel->deleteUser($userId)) {
+            $this->setFlashMessage('success', 'User deleted successfully.');
+        } else {
+            $this->setFlashMessage('error', 'Error: Could not delete user.');
+        }
         redirect('admin/users');
     }
 
@@ -304,7 +335,7 @@ class AdminController {
     // --- Department Management Methods ---
     public function departments() {
         if (!userHasCapability('MANAGE_DEPARTMENTS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to manage departments.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to manage departments.');
             redirect('admin');
         }
         $data = [
@@ -359,7 +390,7 @@ class AdminController {
 
     public function addDepartment() {
         if (!userHasCapability('MANAGE_DEPARTMENTS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to add departments.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to add departments.');
             redirect('admin/departments');
         }
         $commonData = [
@@ -381,7 +412,7 @@ class AdminController {
             if (empty($data['department_name'])) $data['errors']['department_name_err'] = 'Department name is required.';
             if (empty($data['errors'])) {
                 if ($this->departmentModel->createDepartment($data['department_name'], $data['department_description'])) {
-                    $_SESSION['admin_message'] = 'Department created successfully!';
+                    $this->setFlashMessage('success', 'Department created successfully!');
                     redirect('admin/departments');
                 } else {
                     $data['errors']['form_err'] = 'Could not create department. Name might already exist.';
@@ -398,14 +429,14 @@ class AdminController {
 
     public function editDepartment($departmentId = null) {
         if (!userHasCapability('MANAGE_DEPARTMENTS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to edit departments.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to edit departments.');
             redirect('admin/departments');
         }
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
         $department = $this->departmentModel->getDepartmentById($departmentId);
         if (!$department) {
-            $_SESSION['admin_message'] = 'Department not found.';
+            $this->setFlashMessage('error', 'Department not found.');
             redirect('admin/departments');
         }
         $commonData = [
@@ -429,7 +460,7 @@ class AdminController {
             if (empty($data['department_name'])) $data['errors']['department_name_err'] = 'Department name is required.';
             if (empty($data['errors'])) {
                 if ($this->departmentModel->updateDepartment($departmentId, $data['department_name'], $data['department_description'])) {
-                    $_SESSION['admin_message'] = 'Department updated successfully!';
+                    $this->setFlashMessage('success', 'Department updated successfully!');
                     redirect('admin/departments');
                 } else {
                     $data['errors']['form_err'] = 'Could not update department. Name might already exist.';
@@ -449,21 +480,23 @@ class AdminController {
 
     public function deleteDepartment($departmentId = null) {
         if (!userHasCapability('MANAGE_DEPARTMENTS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to delete departments.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to delete departments.');
             redirect('admin/departments');
         }
         if ($departmentId === null) redirect('admin/departments');
         $departmentId = (int)$departmentId;
         if ($this->departmentModel->deleteDepartment($departmentId)) {
-            $_SESSION['admin_message'] = 'Department deleted successfully. Users in this department are now unassigned.';
-        } else { $_SESSION['admin_message'] = 'Error: Could not delete department.'; }
+            $this->setFlashMessage('success', 'Department deleted successfully. Users in this department are now unassigned.');
+        } else {
+            $this->setFlashMessage('error', 'Error: Could not delete department.');
+        }
         redirect('admin/departments');
     }
 
     // --- Site Settings Method ---
     public function siteSettings() {
         if (!userHasCapability('MANAGE_SITE_SETTINGS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to manage site settings.');
             redirect('admin');
         }
         $manageableOptions = [
@@ -501,8 +534,11 @@ class AdminController {
                 }
             }
             if (empty($errors)) {
-                if ($this->optionModel->saveOptions($settingsToSave)) { $_SESSION['admin_message'] = 'Site settings updated successfully!'; }
-                else { $_SESSION['admin_message'] = 'Error: Could not save all site settings.'; }
+                if ($this->optionModel->saveOptions($settingsToSave)) {
+                    $this->setFlashMessage('success', 'Site settings updated successfully!');
+                } else {
+                    $this->setFlashMessage('error', 'Error: Could not save all site settings.');
+                }
                 redirect('admin/siteSettings');
             } else {
                 $currentSettings = [];
@@ -529,21 +565,29 @@ class AdminController {
     // --- Role Access Settings Method ---
     public function roleAccessSettings() {
         if (!userHasCapability('MANAGE_ROLES_PERMISSIONS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to manage role permissions.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to manage role permissions.');
             redirect('admin');
         }
         $definedRoles = getDefinedRoles(); $allCapabilities = CAPABILITIES; 
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $submittedPermissions = $_POST['permissions'] ?? []; $success = true;
+            $flashMessageSet = false;
             foreach (array_keys($definedRoles) as $roleName) {
                 $roleCapabilities = $submittedPermissions[$roleName] ?? [];
                 $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities));
                 if (!$this->rolePermissionModel->setRoleCapabilities($roleName, $validRoleCapabilities)) {
-                    $success = false; $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName); break; 
+                    $success = false;
+                    $this->setFlashMessage('error', "Error updating permissions for role: " . htmlspecialchars($roleName));
+                    $flashMessageSet = true;
+                    break; 
                 }
             }
-            if ($success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'Role permissions updated successfully!'; }
-            elseif (!$success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';}
+            if (!$flashMessageSet) {
+                if ($success) {
+                    $this->setFlashMessage('success', 'Role permissions updated successfully!');
+                } else { // This case might not be hit if the loop breaks and sets a message
+                    $this->setFlashMessage('error', 'An unspecified error occurred while updating permissions.');}
+            }
             redirect('admin/roleAccessSettings'); 
         }
         $currentRoleCapabilities = [];
@@ -559,7 +603,7 @@ class AdminController {
     // --- Role Management Methods ---
     public function listRoles() {
         if (!userHasCapability('MANAGE_ROLES')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to manage roles.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to manage roles.');
             redirect('admin');
         }
         // Data will be fetched by DataTables via AJAX
@@ -623,7 +667,7 @@ class AdminController {
 
     public function addRole() {
         if (!userHasCapability('MANAGE_ROLES')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to add roles.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to add roles.');
             redirect('admin/listRoles');
         }
         $commonData = [
@@ -648,7 +692,7 @@ class AdminController {
             if ($this->roleModel->getRoleByKey($data['role_key'])) $data['errors']['role_key_err'] = 'This Role Key already exists.';
             if (empty($data['errors'])) {
                 if ($this->roleModel->createRole($data['role_key'], $data['role_name'], $data['role_description'], $data['is_system_role'])) {
-                    $_SESSION['admin_message'] = 'Role created successfully!';
+                    $this->setFlashMessage('success', 'Role created successfully!');
                     redirect('admin/listRoles');
                 } else {
                     $data['errors']['form_err'] = 'Could not create role. Key might already exist.';
@@ -665,14 +709,14 @@ class AdminController {
 
     public function editRole($roleId = null) {
         if (!userHasCapability('MANAGE_ROLES')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to edit roles.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to edit roles.');
             redirect('admin/listRoles');
         }
         if ($roleId === null) redirect('admin/listRoles');
         $roleId = (int)$roleId;
         $role = $this->roleModel->getRoleById($roleId);
         if (!$role) {
-            $_SESSION['admin_message'] = 'Role not found.';
+            $this->setFlashMessage('error', 'Role not found.');
             redirect('admin/listRoles');
         }
         $commonData = [
@@ -700,7 +744,7 @@ class AdminController {
             }
             if (empty($data['errors'])) {
                 if ($this->roleModel->updateRole($roleId, $data['role_name'], $data['role_description'], $data['is_system_role'])) {
-                    $_SESSION['admin_message'] = 'Role updated successfully!';
+                    $this->setFlashMessage('success', 'Role updated successfully!');
                     redirect('admin/listRoles');
                 } else {
                     $data['errors']['form_err'] = 'Could not update role.';
@@ -719,27 +763,22 @@ class AdminController {
 
     public function deleteRole($roleId = null) {
         if (!userHasCapability('MANAGE_ROLES')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to delete roles.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to delete roles.');
             redirect('admin/listRoles');
         }
         if ($roleId === null) redirect('admin/listRoles');
         $roleId = (int)$roleId;
         $role = $this->roleModel->getRoleById($roleId);
-        if (!$role) { $_SESSION['admin_message'] = 'Error: Role not found.'; }
-        elseif ($role['is_system_role']) { $_SESSION['admin_message'] = 'Error: System roles (like "'.htmlspecialchars($role['role_name']).'") cannot be deleted.'; }
-        elseif ($this->roleModel->deleteRole($roleId)) { $_SESSION['admin_message'] = 'Role "'.htmlspecialchars($role['role_name']).'" deleted successfully.'; }
-        else { $_SESSION['admin_message'] = 'Error: Could not delete role "'.htmlspecialchars($role['role_name']).'".'; }
+        if (!$role) {
+            $this->setFlashMessage('error', 'Error: Role not found.');
+        } elseif ($role['is_system_role']) {
+            $this->setFlashMessage('error', 'Error: System roles (like "'.htmlspecialchars($role['role_name']).'") cannot be deleted.');
+        } elseif ($this->roleModel->deleteRole($roleId)) {
+            $this->setFlashMessage('success', 'Role "'.htmlspecialchars($role['role_name']).'" deleted successfully.');
+        } else {
+            $this->setFlashMessage('error', 'Error: Could not delete role "'.htmlspecialchars($role['role_name']).'".');
+        }
         redirect('admin/listRoles');
     }
 
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            extract($data);
-            require_once $viewFile;
-        } else {
-            error_log("Admin view file not found: {$viewFile}");
-            die('Admin view not found.');
-        }
-    }
 }

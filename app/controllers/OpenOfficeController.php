@@ -5,7 +5,7 @@
  *
  * Handles operations related to the Open Office module, including Rooms and Reservations.
  */
-class OpenOfficeController {
+class OpenOfficeController extends BaseController {
     private $pdo;
     private $reservationModel; 
     private $roomModel;        
@@ -32,7 +32,7 @@ class OpenOfficeController {
     // --- Room Management Methods ---
     public function rooms() {
         if (!userHasCapability('VIEW_ROOMS')) {
-            $_SESSION['error_message'] = "You do not have permission to view rooms.";
+            $this->setFlashMessage('error', "You do not have permission to view rooms.");
             redirect('dashboard');
         }
         
@@ -104,7 +104,7 @@ class OpenOfficeController {
 
     public function addRoom() {
         if (!userHasCapability('CREATE_ROOMS')) {
-            $_SESSION['admin_message'] = 'Error: You do not have permission to add new rooms.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to add new rooms.');
             redirect('OpenOffice/rooms'); 
         }
 
@@ -154,7 +154,7 @@ class OpenOfficeController {
                 $roomId = $this->roomModel->createRoom($roomData); 
 
                 if ($roomId) {
-                    $_SESSION['admin_message'] = 'Room created successfully!';
+                    $this->setFlashMessage('success', 'Room created successfully!');
                     redirect('OpenOffice/rooms'); 
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not create room.';
@@ -175,7 +175,7 @@ class OpenOfficeController {
 
     public function editRoom($roomId = null) {
         if (!userHasCapability('EDIT_ROOMS')) { 
-            $_SESSION['admin_message'] = 'Error: You do not have permission to edit rooms.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to edit rooms.');
             redirect('OpenOffice/rooms'); 
         }
         
@@ -185,7 +185,7 @@ class OpenOfficeController {
         $room = $this->roomModel->getRoomById($roomId); 
 
         if (!$room) { 
-            $_SESSION['admin_message'] = 'Room not found.';
+            $this->setFlashMessage('error', 'Room not found.');
             redirect('OpenOffice/rooms'); 
         }
 
@@ -233,7 +233,7 @@ class OpenOfficeController {
                     'meta_fields' => $data['meta_fields']
                 ];
                 if ($this->roomModel->updateRoom($roomId, $updateData)) { 
-                    $_SESSION['admin_message'] = 'Room updated successfully!';
+                    $this->setFlashMessage('success', 'Room updated successfully!');
                     redirect('OpenOffice/rooms'); 
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not update room.';
@@ -261,7 +261,7 @@ class OpenOfficeController {
 
     public function deleteRoom($roomId = null) {
         if (!userHasCapability('DELETE_ROOMS')) { 
-            $_SESSION['admin_message'] = 'Error: You do not have permission to delete rooms.';
+            $this->setFlashMessage('error', 'Error: You do not have permission to delete rooms.');
             redirect('OpenOffice/rooms'); 
         }
         
@@ -270,28 +270,28 @@ class OpenOfficeController {
 
         $room = $this->roomModel->getRoomById($roomId); 
         if (!$room) {
-            $_SESSION['admin_message'] = 'Error: Room not found.';
+            $this->setFlashMessage('error', 'Error: Room not found.');
             redirect('OpenOffice/rooms'); 
         }
 
         $existingReservations = $this->reservationModel->getReservationsByParentId($roomId, 'reservation', [], ['limit' => 1]);
         if (!empty($existingReservations)) {
-            $_SESSION['admin_message'] = 'Error: Cannot delete room "' . htmlspecialchars($room['object_title']) . '". It has existing reservations. Please manage or delete them first.';
+            $this->setFlashMessage('error', 'Error: Cannot delete room "' . htmlspecialchars($room['object_title']) . '". It has existing reservations. Please manage or delete them first.');
             redirect('OpenOffice/rooms'); 
             return;
         }
 
         if ($this->roomModel->deleteRoom($roomId)) { 
-            $_SESSION['admin_message'] = 'Room "' . htmlspecialchars($room['object_title']) . '" deleted successfully.';
+            $this->setFlashMessage('success', 'Room "' . htmlspecialchars($room['object_title']) . '" deleted successfully.');
         } else {
-            $_SESSION['admin_message'] = 'Error: Could not delete room "' . htmlspecialchars($room['object_title']) . '".';
+            $this->setFlashMessage('error', 'Error: Could not delete room "' . htmlspecialchars($room['object_title']) . '".');
         }
         redirect('OpenOffice/rooms'); 
     }
 
     public function roomDetails($roomId = null) {
         if (!userHasCapability('VIEW_ROOMS')) {
-            $_SESSION['error_message'] = "You do not have permission to view room details.";
+            $this->setFlashMessage('error', "You do not have permission to view room details.");
             redirect('dashboard');
         }
 
@@ -452,7 +452,7 @@ class OpenOfficeController {
 
     public function roomreservations() {
         if (!userHasCapability('VIEW_ALL_ROOM_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to view all room reservations.";
+            $this->setFlashMessage('error', "You do not have permission to view all room reservations.");
             redirect('dashboard');
         }
         $data = [
@@ -502,14 +502,18 @@ class OpenOfficeController {
 
     public function createreservation($roomId = null) {
         if (!userHasCapability('CREATE_ROOM_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to create room reservations.";
+            $this->setFlashMessage('error', "You do not have permission to create room reservations.");
             redirect('OpenOffice/rooms'); 
         }
-        if ($roomId === null) { $_SESSION['error_message'] = 'No room selected for reservation.'; redirect('OpenOffice/rooms'); }
+        if ($roomId === null) {
+            $this->setFlashMessage('error', 'No room selected for reservation.');
+            redirect('OpenOffice/rooms');
+        }
         $roomId = (int)$roomId;
         $room = $this->roomModel->getRoomById($roomId); 
         if (!$room || $room['object_status'] !== 'available') { 
-            $_SESSION['error_message'] = 'This room is not available for reservation or does not exist.'; redirect('OpenOffice/rooms');
+            $this->setFlashMessage('error', 'This room is not available for reservation or does not exist.');
+            redirect('OpenOffice/rooms');
         }
         $approvedRoomReservations = $this->reservationModel->getReservationsByParentId($roomId, 'reservation', ['o.object_status' => 'approved']);
         $approvedReservationsData = [];
@@ -563,7 +567,7 @@ class OpenOfficeController {
                     else { $failedReservations[] = ['slot' => $mergedRange['slot_display'], 'reason' => 'Failed to save to database.']; }
                 }
                 if ($totalCreated > 0) {
-                    $_SESSION['message'] = "Successfully submitted {$totalCreated} reservation request(s)!";
+                    $this->setFlashMessage('success', "Successfully submitted {$totalCreated} reservation request(s)!");
                     redirect('OpenOffice/myreservations');
                 } else { $data['errors']['form_err'] = 'No reservation requests could be submitted.'; $this->view('openoffice/reservation_form', $data); }
             } else { $this->view('openoffice/reservation_form', $data); }
@@ -630,83 +634,112 @@ class OpenOfficeController {
 
     public function ajaxGetUserReservations() {
         header('Content-Type: application/json');
+        
         if (!isLoggedIn()) {
             error_log("ajaxGetUserReservations: User not logged in.");
-            echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not logged in"]);
+            echo json_encode(["draw" => intval($_POST['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Not logged in"]);
             exit;
         }
+
         $userId = $_SESSION['user_id'];
-        $myReservations = $this->reservationModel->getReservationsByUserId(
-            $userId, 'reservation', ['orderby' => 'o.object_date', 'orderdir' => 'DESC', 'include_meta' => true]
-        );
-        
-        $dataOutput = []; 
-        if ($myReservations === false) { 
-            error_log("ajaxGetUserReservations: Error fetching reservations for user ID {$userId}. Model returned false.");
-             echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => 0, "recordsFiltered" => 0, "data" => [], "error" => "Could not retrieve reservations."]);
-            exit;
-        }
-        if ($myReservations) {
-            foreach ($myReservations as $res) {
+        $draw = intval($_POST['draw'] ?? 0);
+        $start = intval($_POST['start'] ?? 0);
+        $length = intval($_POST['length'] ?? 10);
+        $searchValue = $_POST['search']['value'] ?? '';
+
+        $orderColumnIndex = $_POST['order'][0]['column'] ?? 4; // Default to 'requested_on'
+        $orderColumnName = $_POST['columns'][$orderColumnIndex]['data'] ?? 'object_date';
+        $orderDir = $_POST['order'][0]['dir'] ?? 'desc';
+
+        // Map DataTables column names to database columns
+        $columnMapping = [
+            'room_name' => 'room_obj.object_title', // Requires a join or subquery, handle with care or search on primary fields
+            'object_content' => 'o.object_content', // Purpose
+            'formatted_start_datetime' => 'meta_start.meta_value',
+            'formatted_end_datetime' => 'meta_end.meta_value',
+            'formatted_object_date' => 'o.object_date', // Requested On
+            // status and actions are not directly sortable from DB in this simple setup
+        ];
+        $dbOrderColumn = $columnMapping[$orderColumnName] ?? 'o.object_date';
+
+        $conditions = ['o.object_author' => $userId];
+        $args = [
+            'orderby' => $dbOrderColumn,
+            'orderdir' => $orderDir,
+            'limit' => $length,
+            'offset' => $start,
+            'include_meta' => true
+        ];
+
+        // For searching by room name, the current model might need enhancement or search on primary object fields.
+        // For now, search will apply to reservation's own title (less useful here) and content (purpose).
+        $reservations = $this->reservationModel->getObjectsByConditions('reservation', $conditions, $args, $searchValue);
+        $totalRecords = $this->reservationModel->countObjectsByConditions('reservation', ['o.object_author' => $userId]);
+        $totalFilteredRecords = $this->reservationModel->countObjectsByConditions('reservation', $conditions, $searchValue);
+
+        $dataOutput = [];
+        if ($reservations) {
+            foreach ($reservations as $res) {
                 $roomName = 'N/A';
                 if (!empty($res['object_parent'])) { 
                     $roomFromDb = $this->roomModel->getRoomById($res['object_parent']);
                     $roomName = $roomFromDb ? htmlspecialchars($roomFromDb['object_title']) : 'Unknown Room';
                 }
 
-                $statusKey = $res['object_status'] ?? 'unknown';
-                $statusLabel = ucfirst($statusKey);
-                $badgeClass = 'bg-secondary';
-                if ($statusKey === 'pending') $badgeClass = 'bg-warning text-dark';
-                else if ($statusKey === 'approved') $badgeClass = 'bg-success';
-                else if ($statusKey === 'denied') $badgeClass = 'bg-danger';
-                else if ($statusKey === 'cancelled') $badgeClass = 'bg-info text-dark';
-                $statusHtml = "<span class=\"badge {$badgeClass}\">" . htmlspecialchars($statusLabel) . "</span>";
-
-                $actionsHtml = '';
+                $statusHtml = get_status_badge($res['object_status'] ?? 'unknown');
+                $actionsHtml = '<span class="text-muted small">No actions</span>';
                 if ($res['object_status'] === 'pending' && userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')) {
                     $actionsHtml .= '<a href="' . BASE_URL . 'OpenOffice/cancelreservation/' . htmlspecialchars($res['object_id']) . '" 
                                        class="btn btn-sm btn-warning text-dark" title="Cancel Reservation"
                                        onclick="return confirm(\'Are you sure you want to cancel this reservation?\');">
                                         <i class="fas fa-times-circle"></i> Cancel
                                     </a>';
-                } else {
-                    $actionsHtml = '<span class="text-muted small">No actions</span>';
                 }
 
                 $dataOutput[] = [
-                    "id" => htmlspecialchars($res['object_id']),
-                    "room" => $roomName, 
-                    "purpose" => nl2br(htmlspecialchars($res['object_content'] ?? 'N/A')),
-                    "start_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '')),
-                    "end_time" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '')),
-                    "requested_on" => htmlspecialchars(format_datetime_for_display($res['object_date'])),
-                    "status" => $statusHtml,
-                    "actions" => $actionsHtml
+                    "object_id" => htmlspecialchars($res['object_id']),
+                    "room_name" => $roomName, 
+                    "object_content" => $res['object_content'] ?? '', // Purpose
+                    "formatted_start_datetime" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_start_datetime'] ?? '')),
+                    "formatted_end_datetime" => htmlspecialchars(format_datetime_for_display($res['meta']['reservation_end_datetime'] ?? '')),
+                    "formatted_object_date" => htmlspecialchars(format_datetime_for_display($res['object_date'])), // Requested On
+                    "status_html" => $statusHtml,
+                    "actions_html" => $actionsHtml
                 ];
             }
         }
-        echo json_encode(["draw" => intval($_GET['draw'] ?? 0), "recordsTotal" => count($dataOutput), "recordsFiltered" => count($dataOutput), "data" => $dataOutput]);
+
+        $response = [
+            "draw" => $draw,
+            "recordsTotal" => $totalRecords,
+            "recordsFiltered" => $totalFilteredRecords,
+            "data" => $dataOutput
+        ];
+        echo json_encode($response);
         exit;
     }
 
     public function cancelreservation($reservationId = null) {
         if (!userHasCapability('CANCEL_OWN_ROOM_RESERVATIONS')) {
-            $_SESSION['error_message'] = "You do not have permission to cancel reservations.";
+            $this->setFlashMessage('error', "You do not have permission to cancel reservations.");
             redirect('OpenOffice/myreservations');
         }
         $reservationId = (int)$reservationId;
         $reservation = $this->reservationModel->getObjectById($reservationId);
 
         if (!$reservation || $reservation['object_type'] !== 'reservation' || $reservation['object_author'] != $_SESSION['user_id'] || $reservation['object_status'] !== 'pending') {
-            $_SESSION['error_message'] = 'Invalid request or reservation cannot be cancelled.';
+            $this->setFlashMessage('error', 'Invalid request or reservation cannot be cancelled.');
         } else {
             if ($this->reservationModel->updateObject($reservationId, ['object_status' => 'cancelled'])) {
-                $_SESSION['message'] = 'Room reservation request cancelled successfully.';
+                $this->setFlashMessage('success', 'Room reservation request cancelled successfully.');
             } else {
-                $_SESSION['error_message'] = 'Could not cancel room reservation request.';
+                $this->setFlashMessage('error', 'Could not cancel room reservation request.');
             }
         }
+        // Use a flash message key that the view will check, e.g., 'message' or 'error_message'
+        // The view 'openoffice/my_reservations_list.php' already checks for $_SESSION['message'] and $_SESSION['error_message']
+        // So, using setFlashMessage('success', ...) or setFlashMessage('error', ...) will work if the view is adapted
+        // or if we stick to the existing session keys for now.
         redirect('OpenOffice/myreservations');
     }
     
@@ -737,7 +770,7 @@ class OpenOfficeController {
             } else { $message = 'Only pending room reservations can be approved. This one is ' . $reservationToApprove['object_status'] . '.'; }
         }
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('OpenOffice/roomreservations');
     }
 
@@ -759,7 +792,7 @@ class OpenOfficeController {
             } else { $message = 'Only pending or approved room reservations can be denied. This one is ' . $reservation['object_status'] . '.';}
         }
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('OpenOffice/roomreservations');
     }
 
@@ -778,7 +811,7 @@ class OpenOfficeController {
         } else { $message = "Room reservation record ID {$reservationId} not found or not a room reservation.";}
         
         if ($this->isAjaxRequest()) { echo json_encode(['success' => $success, 'message' => $message]); exit; }
-        $_SESSION[$success ? 'message' : 'error_message'] = $message;
+        $this->setFlashMessage($success ? 'success' : 'error', $message);
         redirect('OpenOffice/roomreservations');
     }
 
@@ -788,7 +821,7 @@ class OpenOfficeController {
             echo json_encode(['success' => false, 'message' => 'Permission denied.']);
             exit;
         }
-        $_SESSION['error_message'] = "You do not have permission for this action.";
+        $this->setFlashMessage('error', "You do not have permission for this action.");
         redirect('dashboard'); 
     }
 
@@ -827,16 +860,5 @@ class OpenOfficeController {
             $mergedRanges[] = ['start' => $currentMerge['start']->format('Y-m-d H:i:s'), 'end' => $currentMerge['end']->format('Y-m-d H:i:s'), 'slot_display' => $currentMerge['start']->format('g:i A') . ' - ' . $currentMerge['end']->format('g:i A')];
         }
         return $mergedRanges;
-    }
-
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            extract($data); 
-            require_once $viewFile;
-        } else {
-            error_log("OpenOffice view file not found: {$viewFile}");
-            die('Error: View not found. Please contact support. Attempted to load: ' . htmlspecialchars($view));
-        }
     }
 }

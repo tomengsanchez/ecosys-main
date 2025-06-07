@@ -277,4 +277,40 @@ function userHasCapability($capability) {
     return false; 
 }
 
+// --- CSRF Protection ---
+/**
+ * Generates a CSRF token, stores it in the session, and returns it.
+ * @return string The CSRF token.
+ */
+function generate_csrf_token() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Verifies the submitted CSRF token against the one in the session.
+ * Unsets the token after verification to ensure one-time use.
+ * @param string $submitted_token The token submitted with the form.
+ * @return bool True if the token is valid, false otherwise.
+ */
+function verify_csrf_token($submitted_token) {
+    if (isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $submitted_token)) {
+        // Token is valid, consume it
+        unset($_SESSION['csrf_token']);
+        return true;
+    }
+    // Token is invalid or not set, consume any existing session token to prevent reuse
+    unset($_SESSION['csrf_token']);
+    return false;
+}
+
+/**
+ * Returns the HTML hidden input field for the CSRF token.
+ * @return string HTML input field.
+ */
+function get_csrf_input() {
+    return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(generate_csrf_token()) . '">';
+}
 ?>

@@ -6,7 +6,7 @@
  * Handles operations related to the Vehicle module, part of Open Office.
  * This controller will manage CRUD operations for vehicles.
  */
-class VehicleController {
+class VehicleController extends BaseController {
     private $pdo;
     private $vehicleModel; // For vehicle-specific operations
     private $userModel;    // For fetching user details (e.g., for 'created by' or 'driver')
@@ -35,7 +35,7 @@ class VehicleController {
      */
     public function index() {
         if (!userHasCapability('VIEW_VEHICLES')) {
-            $_SESSION['error_message'] = "You do not have permission to view vehicles.";
+            $this->setFlashMessage('error', "You do not have permission to view vehicles.");
             redirect('dashboard'); // Or an appropriate Open Office dashboard
         }
 
@@ -162,7 +162,7 @@ class VehicleController {
      */
     public function add() {
         if (!userHasCapability('CREATE_VEHICLES')) {
-            $_SESSION['error_message'] = 'You do not have permission to add new vehicles.';
+            $this->setFlashMessage('error', 'You do not have permission to add new vehicles.');
             redirect('vehicle'); 
         }
 
@@ -233,7 +233,7 @@ class VehicleController {
                 $vehicleId = $this->vehicleModel->createVehicle($vehicleDataToSave);
 
                 if ($vehicleId) {
-                    $_SESSION['message'] = 'Vehicle added successfully!';
+                    $this->setFlashMessage('success', 'Vehicle added successfully!');
                     redirect('vehicle');
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not add vehicle.';
@@ -263,7 +263,7 @@ class VehicleController {
      */
     public function edit($vehicleId = null) {
         if (!userHasCapability('EDIT_VEHICLES')) {
-            $_SESSION['error_message'] = 'You do not have permission to edit vehicles.';
+            $this->setFlashMessage('error', 'You do not have permission to edit vehicles.');
             redirect('vehicle');
         }
         
@@ -274,7 +274,7 @@ class VehicleController {
         $vehicle = $this->vehicleModel->getVehicleById($vehicleId);
 
         if (!$vehicle) {
-            $_SESSION['error_message'] = 'Vehicle not found.';
+            $this->setFlashMessage('error', 'Vehicle not found.');
             redirect('vehicle');
         }
 
@@ -342,7 +342,7 @@ class VehicleController {
                 ];
 
                 if ($this->vehicleModel->updateVehicle($vehicleId, $vehicleDataToUpdate)) {
-                    $_SESSION['message'] = 'Vehicle updated successfully!';
+                    $this->setFlashMessage('success', 'Vehicle updated successfully!');
                     redirect('vehicle');
                 } else {
                     $data['errors']['form_err'] = 'Something went wrong. Could not update vehicle.';
@@ -380,19 +380,19 @@ class VehicleController {
      */
     public function delete($vehicleId = null) {
         if (!userHasCapability('DELETE_VEHICLES')) {
-            $_SESSION['error_message'] = 'You do not have permission to delete vehicles.';
+            $this->setFlashMessage('error', 'You do not have permission to delete vehicles.');
             redirect('vehicle');
         }
 
         if ($vehicleId === null) {
-            $_SESSION['error_message'] = 'No vehicle ID specified for deletion.';
+            $this->setFlashMessage('error', 'No vehicle ID specified for deletion.');
             redirect('vehicle');
         }
         $vehicleId = (int)$vehicleId;
         $vehicle = $this->vehicleModel->getVehicleById($vehicleId);
 
         if (!$vehicle) {
-            $_SESSION['error_message'] = 'Vehicle not found.';
+            $this->setFlashMessage('error', 'Vehicle not found.');
             redirect('vehicle');
         }
 
@@ -402,36 +402,17 @@ class VehicleController {
         $existingReservations = $reservationModel->getReservationsByParentId($vehicleId, 'vehicle_reservation', [], ['limit' => 1]);
 
         if (!empty($existingReservations)) {
-            $_SESSION['error_message'] = 'Error: Cannot delete vehicle "' . htmlspecialchars($vehicle['object_title']) . '". It has existing reservation requests. Please manage or delete them first.';
+            $this->setFlashMessage('error', 'Error: Cannot delete vehicle "' . htmlspecialchars($vehicle['object_title']) . '". It has existing reservation requests. Please manage or delete them first.');
             redirect('vehicle');
             return;
         }
 
 
         if ($this->vehicleModel->deleteVehicle($vehicleId)) {
-            $_SESSION['message'] = 'Vehicle "' . htmlspecialchars($vehicle['object_title']) . '" deleted successfully.';
+            $this->setFlashMessage('success', 'Vehicle "' . htmlspecialchars($vehicle['object_title']) . '" deleted successfully.');
         } else {
-            $_SESSION['error_message'] = 'Error: Could not delete vehicle "' . htmlspecialchars($vehicle['object_title']) . '".';
+            $this->setFlashMessage('error', 'Error: Could not delete vehicle "' . htmlspecialchars($vehicle['object_title']) . '".');
         }
         redirect('vehicle');
-    }
-
-
-    /**
-     * Load a view file.
-     * Ensures that the view file exists within the 'app/views/' directory.
-     *
-     * @param string $view The path to the view file (e.g., 'openoffice/vehicles_list').
-     * @param array $data Data to extract and make available to the view.
-     */
-    protected function view($view, $data = []) {
-        $viewFile = __DIR__ . '/../views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            extract($data); 
-            require_once $viewFile;
-        } else {
-            error_log("VehicleController: View file not found: {$viewFile}");
-            die('Error: View not found (' . htmlspecialchars($view) . '). Please contact support.');
-        }
     }
 }
