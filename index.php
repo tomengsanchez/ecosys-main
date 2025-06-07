@@ -1,8 +1,83 @@
 <?php
 // Main entry point of the application
 
-// Include configuration
+// Include configuration FIRST
 require_once 'config.php';
+
+// --- Maintenance Mode Check ---
+$showMaintenancePage = false;
+
+// 1. Check the primary override constant from config.php
+if (defined('MAINTENANCE_MODE_ENABLED') && MAINTENANCE_MODE_ENABLED === true) {
+    $showMaintenancePage = true;
+} else {
+    // 2. If constant is not true, check the database option, but only if $pdo is available
+    if (isset($pdo) && $pdo !== null) { 
+        if (class_exists('OptionModel')) {
+            try {
+                $optionModel = new OptionModel($pdo);
+                $dbMaintenanceMode = $optionModel->getOption('maintenance_mode');
+                if ($dbMaintenanceMode === 'on') {
+                    $showMaintenancePage = true;
+                }
+            } catch (Exception $e) {
+                error_log("Maintenance Mode Check: Could not access OptionModel or DB. Error: " . $e->getMessage());
+            }
+        } else {
+            error_log("Maintenance Mode Check: OptionModel class not found. Cannot check DB 'maintenance_mode' option.");
+        }
+    }
+}
+
+// 3. Admin Bypass for Maintenance Mode
+if ($showMaintenancePage) {
+    if (isLoggedIn() && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+        $showMaintenancePage = false; 
+        // Optional: Log admin bypass
+        // error_log("Maintenance mode bypassed for admin user: " . ($_SESSION['user_login'] ?? 'ID: ' . $_SESSION['user_id']));
+    }
+}
+
+if ($showMaintenancePage) {
+    $maintenancePagePath = __DIR__ . '/app/views/maintenance_page.php';
+    if (file_exists($maintenancePagePath)) {
+        require_once $maintenancePagePath;
+    } else {
+        header('HTTP/1.1 503 Service Temporarily Unavailable');
+        header('Status: 503 Service Temporarily Unavailable');
+        header('Retry-After: 3600'); 
+        echo "<h1>Site Under Maintenance</h1><p>We are currently performing scheduled maintenance. Please check back soon.</p>";
+    }
+    exit; 
+}
+
+// --- Debug Mode Check (after maintenance and admin bypass) ---
+if (isset($pdo) && $pdo !== null) { 
+    if (class_exists('OptionModel')) {
+        try {
+            $optionModel = new OptionModel($pdo);
+            $debugModeOptionKey = defined('SITE_DEBUG_MODE_OPTION_KEY') ? SITE_DEBUG_MODE_OPTION_KEY : 'site_debug_mode';
+            $defaultDebugMode = defined('DEFAULT_SITE_DEBUG_MODE') ? DEFAULT_SITE_DEBUG_MODE : 'off';
+            
+            $debugModeSetting = $optionModel->getOption($debugModeOptionKey, $defaultDebugMode);
+
+            if ($debugModeSetting === 'on') {
+                if (!defined('SYSTEM_DEBUG_MONITOR_ENABLED')) {
+                    define('SYSTEM_DEBUG_MONITOR_ENABLED', true);
+                }
+                 error_reporting(E_ALL);
+                 ini_set('display_errors', 1);
+                 // Optional: Log that debug mode is on
+                 // error_log("System Debug Monitor ENABLED via database setting.");
+            }
+        } catch (Exception $e) {
+            error_log("Debug Mode Check: Could not access OptionModel or DB for debug setting. Error: " . $e->getMessage());
+        }
+    } else {
+        error_log("Debug Mode Check: OptionModel class not found. Cannot check DB 'site_debug_mode' option.");
+    }
+}
+
 
 // Autoload controllers and models (simple autoloader)
 spl_autoload_register(function ($className) {
@@ -20,11 +95,9 @@ spl_autoload_register(function ($className) {
 });
 
 // --- Basic Routing ---
-// Get the requested path from the URL
 $requestPath = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
-$basePath = trim(BASE_URL, '/'); // BASE_URL is defined in config.php
+$basePath = trim(BASE_URL, '/'); 
 
-// Remove base path from request path if present
 if (!empty($basePath) && strpos($requestPath, $basePath) === 0) {
     $requestPath = substr($requestPath, strlen($basePath));
 }
@@ -38,91 +111,67 @@ $actionName = '';
 $params = [];
 
 if (empty($segments)) {
-    // No segments in URL (e.g., accessing the root like /mainsystem/)
     if (isLoggedIn()) {
-        $controllerName = 'DashboardController'; // Default for logged-in users
+        $controllerName = 'DashboardController'; 
         $actionName = 'index';
     } else {
-        $controllerName = 'AuthController'; // Default for logged-out users
+        $controllerName = 'AuthController'; 
         $actionName = 'login';
     }
 } else {
-    // At least one segment (controller specified)
-    // Ensure the first letter of the segment is capitalized for the controller name.
     $controllerName = ucfirst($segments[0]) . 'Controller'; 
-    
-    $actionName = !empty($segments[1]) ? $segments[1] : 'index'; // Preserve original case for action
-
-    // Collect remaining segments as parameters
+    $actionName = !empty($segments[1]) ? $segments[1] : 'index'; 
     if (count($segments) > 2) {
         $params = array_slice($segments, 2);
     }
 }
 
-error_log("Router determined: Controller='{$controllerName}', Action='{$actionName}' from Segments: " . implode('/', $segments));
-
 // --- Controller Instantiation and Action Execution ---
 $controllerFile = __DIR__ . '/app/controllers/' . $controllerName . '.php';
-error_log("Router attempting to load controller file: '{$controllerFile}'");
 
 if (file_exists($controllerFile)) {
-    error_log("Controller file '{$controllerFile}' exists.");
-    // require_once $controllerFile; // Autoloader should handle this. Explicit require can be a fallback.
-
     if (class_exists($controllerName)) {
-        error_log("Class '{$controllerName}' exists.");
+        if ($pdo === null && !$showMaintenancePage && !(defined('SYSTEM_DEBUG_MONITOR_ENABLED') && SYSTEM_DEBUG_MONITOR_ENABLED === true && isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') ) { 
+            header('HTTP/1.1 503 Service Temporarily Unavailable');
+            echo "<h1>Service Unavailable</h1><p>The website is currently experiencing technical difficulties. Please try again later.</p>";
+            error_log("Critical Error: PDO object is null in index.php, but not in maintenance or (admin) debug mode. DB connection likely failed in config.php.");
+            exit;
+        }
         $controller = new $controllerName($pdo); 
         
         $resolvedActionName = '';
         $actionExists = false;
 
-        $availableMethods = get_class_methods($controller);
-        error_log("Methods available in '{$controllerName}': " . implode(', ', $availableMethods));
-
-        error_log("Checking for method '{$actionName}' (original case)...");
         if (method_exists($controller, $actionName)) {
             $resolvedActionName = $actionName;
             $actionExists = true;
-            error_log("Found method '{$resolvedActionName}' with original case.");
         } else {
-            error_log("Method '{$actionName}' (original case) NOT found. Checking lowercase...");
             $lowercaseActionName = strtolower($actionName);
             if (method_exists($controller, $lowercaseActionName)) { 
                 $resolvedActionName = $lowercaseActionName;
                 $actionExists = true;
-                error_log("Found method '{$resolvedActionName}' with lowercase.");
-            } else {
-                error_log("Method '{$lowercaseActionName}' (lowercase) also NOT found.");
             }
         }
 
         if ($actionExists) {
-            error_log("Dispatching to '{$controllerName}->{$resolvedActionName}'.");
             call_user_func_array([$controller, $resolvedActionName], $params);
         } else {
-            error_log("Action '{$actionName}' (and variants) not found in controller '{$controllerName}'.");
+            error_log("Action '{$actionName}' (and variants) not found in controller '{$controllerName}'. Requested Path: '{$requestPath}'");
             header("HTTP/1.0 404 Not Found");
             echo "<h1>404 Not Found</h1><p>The page you requested could not be found (action method missing).</p>";
-            echo "<p>Controller: {$controllerName}, Attempted Action: {$actionName}</p>";
-            echo "<p>Please check server error logs for more details.</p>";
         }
     } else {
-        error_log("Controller class '{$controllerName}' NOT found in file '{$controllerFile}' after checking existence.");
+        error_log("Controller class '{$controllerName}' NOT found in file '{$controllerFile}' after checking existence. Requested Path: '{$requestPath}'");
         header("HTTP/1.0 404 Not Found");
         echo "<h1>404 Not Found</h1><p>The page you requested could not be found (controller class missing).</p>";
-        echo "<p>Controller: {$controllerName}</p>";
-        echo "<p>Please check server error logs for more details.</p>";
     }
 } else {
     error_log("Controller file not found: '{$controllerFile}'. Requested Path: '{$requestPath}'");
-    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') { // Ensure AuthController itself isn't caught here if file is missing
+    if (!isLoggedIn() && strtolower($controllerName) !== 'authcontroller') {
         redirect('auth/login');
     } else {
         header("HTTP/1.0 404 Not Found");
         echo "<h1>404 Not Found</h1><p>The page you requested could not be found (controller file missing).</p>";
-        echo "<p>Requested Path: {$requestPath}</p>";
-        echo "<p>Attempted Controller File: {$controllerFile}</p>";
-        echo "<p>Please check server error logs for more details.</p>";
     }
 }
 

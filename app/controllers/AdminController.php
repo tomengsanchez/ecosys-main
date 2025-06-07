@@ -466,6 +466,9 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage site settings.';
             redirect('admin');
         }
+        $debugModeOptionKey = defined('SITE_DEBUG_MODE_OPTION_KEY') ? SITE_DEBUG_MODE_OPTION_KEY : 'site_debug_mode';
+        $defaultDebugMode = defined('DEFAULT_SITE_DEBUG_MODE') ? DEFAULT_SITE_DEBUG_MODE : 'off';
+
         $manageableOptions = [
             'site_name' => ['label' => 'Site Name', 'default' => 'My Awesome Site', 'type' => 'text'],
             'site_tagline' => ['label' => 'Site Tagline', 'default' => 'The best site ever', 'type' => 'text'],
@@ -473,6 +476,7 @@ class AdminController {
             'items_per_page' => ['label' => 'Items Per Page', 'default' => 10, 'type' => 'number', 'help' => 'Number of items to show on paginated lists.'],
             'site_description' => ['label' => 'Site Description', 'default' => '', 'type' => 'textarea'],
             'maintenance_mode' => ['label' => 'Maintenance Mode', 'default' => 'off', 'type' => 'select', 'options' => ['on' => 'On', 'off' => 'Off']],
+            $debugModeOptionKey => ['label' => 'Enable System Debug Monitor', 'default' => $defaultDebugMode, 'type' => 'select', 'options' => ['on' => 'On', 'off' => 'Off'], 'help' => 'Shows a debug monitor at the top of all pages with system information.'],
             'site_time_format' => [ 
                 'label' => 'Site Time Format', 'default' => DEFAULT_TIME_FORMAT, 'type' => 'select',
                 'options' => [ 
@@ -532,25 +536,99 @@ class AdminController {
             $_SESSION['admin_message'] = 'Error: You do not have permission to manage role permissions.';
             redirect('admin');
         }
-        $definedRoles = getDefinedRoles(); $allCapabilities = CAPABILITIES; 
+
+        $definedRoles = getDefinedRoles(); // ['admin' => 'Administrator', 'editor' => 'Editor', ...]
+        $allCapabilities = CAPABILITIES;   // ['ACCESS_ADMIN_PANEL' => 'Access Admin Panel', ...]
+
+        // Define categories for capabilities
+        $capabilityCategories = [
+            'General Admin & Site' => [
+                'ACCESS_ADMIN_PANEL', 'MANAGE_SITE_SETTINGS', 'VIEW_REPORTS', 'VIEW_SYSTEM_INFO'
+            ],
+            'User & Role Management' => [
+                'MANAGE_USERS', 'MANAGE_ROLES', 'MANAGE_ROLES_PERMISSIONS', 'MANAGE_DEPARTMENTS'
+            ],
+            'Open Office - Room Management' => [
+                'MANAGE_ROOMS', 'VIEW_ROOMS', 'CREATE_ROOMS', 'EDIT_ROOMS', 'DELETE_ROOMS'
+            ],
+            'Open Office - Room Reservations' => [
+                'CREATE_ROOM_RESERVATIONS', 'EDIT_OWN_ROOM_RESERVATIONS', 'CANCEL_OWN_ROOM_RESERVATIONS',
+                'VIEW_ALL_ROOM_RESERVATIONS', 'APPROVE_DENY_ROOM_RESERVATIONS', 'EDIT_ANY_ROOM_RESERVATION',
+                'DELETE_ANY_ROOM_RESERVATION'
+            ],
+            'Open Office - Vehicle Management' => [
+                'VIEW_VEHICLES', 'CREATE_VEHICLES', 'EDIT_VEHICLES', 'DELETE_VEHICLES'
+            ],
+            'Open Office - Vehicle Reservations' => [
+                'CREATE_VEHICLE_RESERVATIONS', 'EDIT_OWN_VEHICLE_RESERVATIONS', 'CANCEL_OWN_VEHICLE_RESERVATIONS',
+                'VIEW_ALL_VEHICLE_RESERVATIONS', 'APPROVE_DENY_VEHICLE_RESERVATIONS', 'EDIT_ANY_VEHICLE_RESERVATION',
+                'DELETE_ANY_VEHICLE_RESERVATION'
+            ],
+            'Department Specific Modules' => [ // Example grouping for other modules
+                'MANAGE_IT_REQUESTS', 'MANAGE_RAP_CALENDAR', 'MANAGE_SES_DATA'
+            ],
+            'Other Admin Functions' => [
+                'MANAGE_DTR', 'MANAGE_ASSETS'
+            ]
+        ];
+
+        // Filter $allCapabilities to only include those defined in CAPABILITIES constant
+        // and structure them according to $capabilityCategories
+        $categorizedCapabilities = [];
+        foreach ($capabilityCategories as $categoryName => $capabilityKeysInCategory) {
+            $tempCapabilities = [];
+            foreach ($capabilityKeysInCategory as $key) {
+                if (isset($allCapabilities[$key])) {
+                    $tempCapabilities[$key] = $allCapabilities[$key];
+                }
+            }
+            if (!empty($tempCapabilities)) {
+                $categorizedCapabilities[$categoryName] = $tempCapabilities;
+            }
+        }
+        // Add any capabilities not in defined categories to an "Other" category
+        $otherCapabilities = [];
+        $assignedCapabilityKeys = array_merge(...array_values($capabilityCategories)); // Flatten
+        foreach ($allCapabilities as $key => $label) {
+            if (!in_array($key, $assignedCapabilityKeys)) {
+                $otherCapabilities[$key] = $label;
+            }
+        }
+        if (!empty($otherCapabilities)) {
+            $categorizedCapabilities['Other Capabilities'] = $otherCapabilities;
+        }
+
+
         if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $submittedPermissions = $_POST['permissions'] ?? []; $success = true;
             foreach (array_keys($definedRoles) as $roleName) {
                 $roleCapabilities = $submittedPermissions[$roleName] ?? [];
-                $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities));
+                // Ensure only valid capabilities are processed
+                $validRoleCapabilities = array_intersect($roleCapabilities, array_keys($allCapabilities)); 
                 if (!$this->rolePermissionModel->setRoleCapabilities($roleName, $validRoleCapabilities)) {
-                    $success = false; $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName); break; 
+                    $success = false; 
+                    $_SESSION['admin_message'] = "Error updating permissions for role: " . htmlspecialchars($roleName); 
+                    break; 
                 }
             }
-            if ($success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'Role permissions updated successfully!'; }
-            elseif (!$success && !isset($_SESSION['admin_message'])) { $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';}
+            if ($success && !isset($_SESSION['admin_message'])) { 
+                $_SESSION['admin_message'] = 'Role permissions updated successfully!'; 
+            } elseif (!$success && !isset($_SESSION['admin_message'])) { 
+                $_SESSION['admin_message'] = 'An unspecified error occurred while updating permissions.';
+            }
             redirect('admin/roleAccessSettings'); 
         }
+
         $currentRoleCapabilities = [];
-        foreach (array_keys($definedRoles) as $roleName) { $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName); }
+        foreach (array_keys($definedRoles) as $roleName) { 
+            $currentRoleCapabilities[$roleName] = $this->rolePermissionModel->getCapabilitiesForRole($roleName); 
+        }
+        
         $data = [
-            'pageTitle' => 'Role Access Settings', 'definedRoles' => $definedRoles, 
-            'allCapabilities' => $allCapabilities, 'currentRoleCapabilities' => $currentRoleCapabilities, 
+            'pageTitle' => 'Role Access Settings', 
+            'definedRoles' => $definedRoles, 
+            'categorizedCapabilities' => $categorizedCapabilities, // Pass categorized list to view
+            'currentRoleCapabilities' => $currentRoleCapabilities, 
             'breadcrumbs' => [['label' => 'Admin Panel', 'url' => 'admin'], ['label' => 'Role Access Settings']]
         ];
         $this->view('admin/role_access_settings', $data); 

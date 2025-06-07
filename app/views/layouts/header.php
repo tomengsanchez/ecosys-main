@@ -2,18 +2,16 @@
 if (!defined('BASE_URL')) {
     define('BASE_URL', '/mainsystem/');
 }
+
 $currentPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $basePathStripped = rtrim(BASE_URL, '/');
 
-// Helper function to check if a nav link is active
 function isActive($linkPath, $currentPath, $basePathStripped) {
     $fullLinkPath = $basePathStripped . '/' . ltrim($linkPath, '/');
-    // Special case for the root/dashboard
     if (($linkPath === 'Dashboard' || $linkPath === '') && ($currentPath === $basePathStripped . '/' || $currentPath === $basePathStripped || $currentPath === $basePathStripped . '/Dashboard' || $currentPath === $basePathStripped . '/dashboard')) {
         return true;
     }
     if ($linkPath !== '' && !empty($fullLinkPath) && strpos($currentPath, $fullLinkPath) === 0) {
-        // Check if it's an exact match or followed by a query string or slash
         if ($currentPath === $fullLinkPath || 
             strpos($currentPath, $fullLinkPath . '?') === 0 || 
             strpos($currentPath, $fullLinkPath . '/') === 0) {
@@ -23,7 +21,6 @@ function isActive($linkPath, $currentPath, $basePathStripped) {
     return false;
 }
 
-// Helper function to check if a dropdown section is active
 function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped) {
     $fullSectionPrefix = $basePathStripped . '/' . ltrim($sectionPrefix, '/');
     if (!empty($fullSectionPrefix) && strpos($currentPath, $fullSectionPrefix) === 0) {
@@ -32,7 +29,6 @@ function isDropdownSectionActive($sectionPrefix, $currentPath, $basePathStripped
     return false;
 }
 
-// Navigation Configuration
 $navigationConfig = [
     [
         'label' => 'Dashboard',
@@ -43,21 +39,21 @@ $navigationConfig = [
         'label' => 'Open Office',
         'icon' => 'fas fa-door-open me-1',
         'id' => 'openOfficeDropdown',
-        'base_path' => 'OpenOffice', // MODIFIED: Changed to OpenOffice (uppercase O)
+        'base_path' => 'OpenOffice', 
         'children' => [
             [
                 'label' => 'Manage Rooms',
-                'url' => 'OpenOffice/rooms', // MODIFIED: Changed to OpenOffice (uppercase O)
+                'url' => 'OpenOffice/rooms', 
                 'capability' => 'VIEW_ROOMS'
             ],
             [
                 'label' => 'Room Reservations (Admin)',
-                'url' => 'OpenOffice/roomreservations', // MODIFIED: Changed to OpenOffice (uppercase O)
+                'url' => 'OpenOffice/roomreservations', 
                 'capability' => 'VIEW_ALL_ROOM_RESERVATIONS'
             ],
             [
                 'label' => 'My Room Reservations',
-                'url' => 'OpenOffice/myreservations', // MODIFIED: Changed to OpenOffice (uppercase O)
+                'url' => 'OpenOffice/myreservations', 
             ],
             [
                 'type' => 'divider' 
@@ -82,7 +78,7 @@ $navigationConfig = [
         'label' => 'IT Department',
         'icon' => 'fas fa-desktop me-1',
         'id' => 'itDepartmentDropdown',
-        'base_path' => 'It', // Assuming ItController.php
+        'base_path' => 'It', 
         'capability' => 'MANAGE_IT_REQUESTS', 
         'children' => [
             [
@@ -95,7 +91,7 @@ $navigationConfig = [
         'label' => 'Rap', 
         'icon' => 'fas fa-calendar-alt me-1',
         'id' => 'rapDropdown',
-        'base_path' => 'Rap',  // Assuming RapController.php
+        'base_path' => 'Rap',  
         'capability' => 'MANAGE_RAP_CALENDAR', 
         'children' => [
             [
@@ -108,7 +104,7 @@ $navigationConfig = [
         'label' => 'SES', 
         'icon' => 'fas fa-chart-bar me-1',
         'id' => 'sesDropdown',
-        'base_path' => 'Ses', // Assuming SesController.php
+        'base_path' => 'Ses', 
         'capability' => 'MANAGE_SES_DATA', 
         'children' => [
             [
@@ -201,6 +197,26 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
             padding-top: 70px; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
         }
+        #systemDebugMonitor {
+            position: fixed; 
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #212529; 
+            color: #f8f9fa; 
+            padding: 8px 15px;
+            border-bottom: 2px solid #fd7e14; 
+            z-index: 1056; 
+            font-size: 0.85em;
+            text-align: left;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #systemDebugMonitor strong {
+            color: #ffc107; 
+        }
+        #systemDebugMonitor span {
+            margin-right: 15px;
+        }
         .breadcrumb { 
             background-color: #e9ecef; 
             padding: 0.75rem 1rem; 
@@ -243,9 +259,42 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
         .alert {
             border-radius: 0.25rem;
         }
+        body.debug-monitor-active .navbar.fixed-top {
+            top: 40px; 
+        }
+         body.debug-monitor-active {
+            padding-top: calc(70px + 40px); 
+        }
+
     </style>
 </head>
 <body>
+<?php
+// Display System Debug Monitor if enabled
+if (defined('SYSTEM_DEBUG_MONITOR_ENABLED') && SYSTEM_DEBUG_MONITOR_ENABLED === true) {
+    $phpVersion = phpversion();
+    $memoryUsage = round(memory_get_peak_usage(true) / 1024 / 1024, 2) . " MB";
+    $requestTime = isset($_SERVER["REQUEST_TIME_FLOAT"]) ? round(microtime(true) - $_SERVER["REQUEST_TIME_FLOAT"], 4) . "s" : "N/A"; 
+
+    $currentRouteDisplay = htmlspecialchars($_SERVER['REQUEST_URI']); 
+    
+    $loggedInUserDisplay = "Not Logged In";
+    if (isLoggedIn()) {
+        $loggedInUserDisplay = htmlspecialchars($_SESSION['user_login'] ?? 'Unknown') . " (Role: " . htmlspecialchars($_SESSION['user_role'] ?? 'N/A') . ")";
+    }
+
+    echo '<div id="systemDebugMonitor">';
+    echo '<strong>DEBUG MODE:</strong>&nbsp;&nbsp;';
+    echo '<span>PHP: ' . htmlspecialchars($phpVersion) . '</span>';
+    echo '<span>Memory: ' . htmlspecialchars($memoryUsage) . '</span>';
+    echo '<span>Load Time: ' . htmlspecialchars($requestTime) . '</span>';
+    echo '<span>Route: ' . $currentRouteDisplay . '</span>';
+    echo '<span>User: ' . $loggedInUserDisplay . '</span>';
+    echo '</div>';
+    echo '<script>document.body.classList.add("debug-monitor-active");</script>';
+}
+?>
+
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
     <div class="container-fluid">
         <a class="navbar-brand" href="<?php echo BASE_URL; ?>">
@@ -268,7 +317,7 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                     if (userHasCapability('ACCESS_ADMIN_PANEL')): 
                     ?>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('admin', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <a class="nav-link dropdown-toggle <?php echo isDropdownSectionActive('admin', $currentPath, $basePathStripped) || isDropdownSectionActive('SystemInfo', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-user-shield me-1"></i>Admin
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminDropdown">
@@ -279,7 +328,9 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                                                                     !isDropdownSectionActive('admin/roleAccessSettings', $currentPath, $basePathStripped) &&
                                                                     !isDropdownSectionActive('admin/listRoles', $currentPath, $basePathStripped) && 
                                                                     !isDropdownSectionActive('admin/dtr', $currentPath, $basePathStripped) && 
-                                                                    !isDropdownSectionActive('admin/assets', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
+                                                                    !isDropdownSectionActive('admin/assets', $currentPath, $basePathStripped) &&
+                                                                    !isDropdownSectionActive('SystemInfo', $currentPath, $basePathStripped) /* Exclude SystemInfo from highlighting Admin Dashboard */
+                                                                    ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin'; ?>">Admin Dashboard</a></li>
                                 <?php if (userHasCapability('MANAGE_USERS')): ?>
                                     <li><a class="dropdown-item <?php echo isActive('admin/users', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/users'; ?>">Employees</a></li>
                                 <?php endif; ?>
@@ -295,6 +346,11 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
                                 <?php if (userHasCapability('MANAGE_SITE_SETTINGS')): ?>
                                     <li><a class="dropdown-item <?php echo isActive('admin/siteSettings', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'admin/siteSettings'; ?>">Site Settings</a></li>
                                 <?php endif; ?>
+                                <?php if (userHasCapability('VIEW_SYSTEM_INFO')): ?>
+                                     <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item <?php echo isActive('SystemInfo', $currentPath, $basePathStripped) ? 'active' : ''; ?>" href="<?php echo BASE_URL . 'SystemInfo'; ?>">System Information</a></li>
+                                <?php endif; ?>
+
                                 <?php if (userHasCapability('MANAGE_DTR') || userHasCapability('MANAGE_ASSETS')): ?>
                                     <li><hr class="dropdown-divider"></li>
                                 <?php endif; ?>
@@ -337,3 +393,4 @@ function renderNavigationItems($items, $currentPath, $basePathStripped, $isDropd
     }
     ?>
     <div class="main-content">
+

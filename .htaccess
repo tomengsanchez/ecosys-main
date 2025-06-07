@@ -1,6 +1,12 @@
 RewriteEngine On
+#dev
 RewriteBase /mainsystem/
 
+#staging
+# RewriteBase /ecosys-main/
+
+#production
+# RewriteBase /ent/
 # Redirect Trailing Slashes If Not A Folder...
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)/$ /$1 [L,R=301]
